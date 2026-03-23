@@ -1,0 +1,42 @@
+# ============================================================
+# GoalGetter — LEAP 99 Goal Tracking Platform
+# © 2026 Doc Kalodski. All rights reserved.
+# PROPRIETARY AND CONFIDENTIAL — Internal use only.
+# ============================================================
+
+# Block ALL crawlers, scrapers, and archiving bots
+User-agent: *
+Disallow: /
+
+# Block AI training crawlers
+User-agent: GPTBot
+Disallow: /
+
+User-agent: ChatGPT-User
+Disallow: /
+
+User-agent: CCBot
+Disallow: /
+
+User-agent: anthropic-ai
+Disallow: /
+
+User-agent: Claude-Web
+Disallow: /
+
+User-agent: Google-Extended
+Disallow: /
+
+User-agent: Bingbot
+Disallow: /
+
+User-agent: Googlebot
+Disallow: /
+
+User-agent: ia_archiver
+Disallow: /
+
+User-agent: Wayback Machine
+Disallow: /
+
+# No sitemap — internal tool not for public discovery

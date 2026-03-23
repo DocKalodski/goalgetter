@@ -1,0 +1,28 @@
+{
+  "current_iteration": 2,
+  "total_issues_fixed": 9,
+  "iterations": [
+    {
+      "number": 1,
+      "date": "2026-03-07",
+      "issues_fixed": 3,
+      "files_modified": 4,
+      "files_created": 0,
+      "tests_passed": 16,
+      "tests_failed": 0,
+      "regressions": 0,
+      "source": "evaluation-report.md"
+    },
+    {
+      "number": 2,
+      "date": "2026-03-07",
+      "issues_fixed": 6,
+      "files_modified": 6,
+      "files_created": 0,
+      "tests_passed": 16,
+      "tests_failed": 0,
+      "regressions": 0,
+      "source": "security-report.md"
+    }
+  ]
+}

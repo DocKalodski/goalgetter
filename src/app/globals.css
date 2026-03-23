@@ -1,0 +1,92 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #3b82f6;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #10b981;
+  --color-secondary-foreground: #ffffff;
+  --color-accent: #8b5cf6;
+  --color-accent-foreground: #ffffff;
+  --color-destructive: #ef4444;
+  --color-destructive-foreground: #ffffff;
+  --color-warning: #f97316;  /* orange — warnings */
+  --color-success: #22c55e;
+
+  --color-background: #ffffff;
+  --color-foreground: #0f172a;
+  --color-card: #ffffff;
+  --color-card-foreground: #0f172a;
+  --color-popover: #ffffff;
+  --color-popover-foreground: #0f172a;
+  --color-muted: #f1f5f9;
+  --color-muted-foreground: #64748b;
+  --color-border: #e2e8f0;
+  --color-input: #e2e8f0;
+  --color-ring: #3b82f6;
+
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+
+@layer base {
+  html {
+    font-size: 18px; /* senior-friendly: larger base (~12% above default 16px) */
+  }
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+}
+
+/* ─── Data Protection ──────────────────────────────────────────────────────── */
+
+/* Block all printing — show blank page */
+@media print {
+  body, body * {
+    display: none !important;
+    visibility: hidden !important;
+  }
+  body::after {
+    display: block !important;
+    visibility: visible !important;
+    content: "Printing is disabled for data protection.";
+    font-size: 18px;
+    color: #000;
+    text-align: center;
+    padding: 4rem;
+  }
+}
+
+/* Block printing when JS beforeprint fires */
+body.printing-blocked * {
+  display: none !important;
+  visibility: hidden !important;
+}
+
+/* Prevent text selection on data tables */
+.data-protected {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────── */
+
+.dark {
+  --color-background: #0f172a;
+  --color-foreground: #f8fafc;
+  --color-card: #1e293b;
+  --color-card-foreground: #f8fafc;
+  --color-popover: #1e293b;
+  --color-popover-foreground: #f8fafc;
+  --color-muted: #334155;
+  --color-muted-foreground: #94a3b8;
+  --color-border: #334155;
+  --color-input: #334155;
+  --color-ring: #3b82f6;
+}

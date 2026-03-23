@@ -1,0 +1,13 @@
+{
+  "project_id": "goalgetter-leap-2026",
+  "project_name": "GoalGetter",
+  "project_description": "LEAP Goal Tracking Application - S.M.A.R.T.e.r. framework with 4-tier role hierarchy, 3-level drill-down navigation, offline-first PWA",
+  "current_phase": "initialization",
+  "current_agent": "@orchestrator",
+  "sprint_number": 0,
+  "total_sprints": 5,
+  "created_at": "2026-03-07T00:00:00Z",
+  "has_prd": true,
+  "has_prp": true,
+  "handoffs": []
+}

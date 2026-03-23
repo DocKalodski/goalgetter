@@ -1,0 +1,564 @@
+"""
+Generate Q101-branded PDF from parsed ideation conversation.
+
+Uses reportlab to create professionally styled PDFs with:
+- Q101 brand colors (blue/gold)
+- Speaker-labeled conversation turns
+- Preserved tables and diagrams
+- Header/footer with session info
+"""
+
+import os
+import re
+from datetime import datetime
+from typing import List, Optional
+
+from reportlab.lib.pagesizes import letter
+from reportlab.lib import colors
+from reportlab.lib.units import inch
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_JUSTIFY
+from reportlab.platypus import (
+    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
+    PageBreak, Preformatted, KeepTogether, HRFlowable
+)
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+
+# Import parser
+from conversation_parser import (
+    ConversationTurn, TurnType, parse_raw_conversation,
+    parse_conversation_file, parse_markdown_table, extract_tables
+)
+
+
+# Q101 Brand Colors
+Q101_BLUE = colors.HexColor('#1A5276')
+Q101_GOLD = colors.HexColor('#F39C12')
+Q101_LIGHT_BLUE = colors.HexColor('#EBF5FB')
+Q101_DARK_TEXT = colors.HexColor('#2C3E50')
+Q101_GRAY = colors.HexColor('#5D6D7E')
+Q101_WHITE = colors.HexColor('#FFFFFF')
+Q101_LIGHT_GOLD = colors.HexColor('#FCF3CF')
+
+
+def get_q101_styles() -> dict:
+    """Create Q101-branded paragraph styles."""
+    styles = getSampleStyleSheet()
+
+    # Title style
+    styles.add(ParagraphStyle(
+        name='Q101Title',
+        parent=styles['Title'],
+        fontSize=24,
+        textColor=Q101_BLUE,
+        spaceAfter=12,
+        alignment=TA_CENTER,
+        fontName='Helvetica-Bold',
+    ))
+
+    # Subtitle style
+    styles.add(ParagraphStyle(
+        name='Q101Subtitle',
+        parent=styles['Normal'],
+        fontSize=12,
+        textColor=Q101_GRAY,
+        spaceAfter=6,
+        alignment=TA_CENTER,
+        fontName='Helvetica',
+    ))
+
+    # Phase header style
+    styles.add(ParagraphStyle(
+        name='Q101PhaseHeader',
+        parent=styles['Heading1'],
+        fontSize=16,
+        textColor=Q101_WHITE,
+        backColor=Q101_BLUE,
+        spaceBefore=18,
+        spaceAfter=12,
+        leftIndent=10,
+        rightIndent=10,
+        borderPadding=8,
+        fontName='Helvetica-Bold',
+    ))
+
+    # Question style
+    styles.add(ParagraphStyle(
+        name='Q101Question',
+        parent=styles['Normal'],
+        fontSize=11,
+        textColor=Q101_DARK_TEXT,
+        spaceBefore=12,
+        spaceAfter=6,
+        leftIndent=0,
+        fontName='Helvetica-Bold',
+    ))
+
+    # Answer style (user response)
+    styles.add(ParagraphStyle(
+        name='Q101Answer',
+        parent=styles['Normal'],
+        fontSize=11,
+        textColor=Q101_DARK_TEXT,
+        backColor=Q101_LIGHT_BLUE,
+        spaceBefore=6,
+        spaceAfter=12,
+        leftIndent=10,
+        rightIndent=10,
+        borderPadding=6,
+        fontName='Helvetica',
+    ))
+
+    # Narrative/body style
+    styles.add(ParagraphStyle(
+        name='Q101Body',
+        parent=styles['Normal'],
+        fontSize=10,
+        textColor=Q101_DARK_TEXT,
+        spaceBefore=4,
+        spaceAfter=4,
+        alignment=TA_JUSTIFY,
+        fontName='Helvetica',
+    ))
+
+    # Monospace style for diagrams
+    styles.add(ParagraphStyle(
+        name='Q101Mono',
+        parent=styles['Code'],
+        fontSize=8,
+        textColor=Q101_DARK_TEXT,
+        backColor=colors.HexColor('#F8F9F9'),
+        spaceBefore=6,
+        spaceAfter=6,
+        leftIndent=10,
+        rightIndent=10,
+        fontName='Courier',
+    ))
+
+    # Summary box style
+    styles.add(ParagraphStyle(
+        name='Q101Summary',
+        parent=styles['Normal'],
+        fontSize=10,
+        textColor=Q101_DARK_TEXT,
+        backColor=Q101_LIGHT_GOLD,
+        spaceBefore=8,
+        spaceAfter=8,
+        leftIndent=10,
+        rightIndent=10,
+        borderPadding=8,
+        fontName='Helvetica',
+    ))
+
+    # Speaker label style
+    styles.add(ParagraphStyle(
+        name='Q101SpeakerLabel',
+        parent=styles['Normal'],
+        fontSize=9,
+        textColor=Q101_GOLD,
+        spaceBefore=8,
+        spaceAfter=2,
+        fontName='Helvetica-Bold',
+    ))
+
+    return styles
+
+
+def create_header_footer(canvas, doc, session_id: str, topic: str):
+    """Add header and footer to each page."""
+    canvas.saveState()
+
+    # Header - gold accent bar
+    canvas.setFillColor(Q101_GOLD)
+    canvas.rect(0, letter[1] - 25, letter[0], 25, fill=True, stroke=False)
+
+    # Header text
+    canvas.setFillColor(Q101_WHITE)
+    canvas.setFont('Helvetica-Bold', 10)
+    canvas.drawString(0.5 * inch, letter[1] - 18, f"Ideation Session: {topic[:50]}")
+
+    # Footer
+    canvas.setFillColor(Q101_BLUE)
+    canvas.rect(0, 0, letter[0], 20, fill=True, stroke=False)
+
+    canvas.setFillColor(Q101_WHITE)
+    canvas.setFont('Helvetica', 8)
+    canvas.drawString(0.5 * inch, 7, f"Session ID: {session_id}")
+    canvas.drawRightString(letter[0] - 0.5 * inch, 7, f"Page {doc.page}")
+    canvas.drawCentredString(letter[0] / 2, 7, "Q101 Framework")
+
+    canvas.restoreState()
+
+
+def build_title_page(topic: str, session_id: str, date: str, styles: dict) -> List:
+    """Build the title page elements."""
+    elements = []
+
+    # Add spacing from top
+    elements.append(Spacer(1, 1.5 * inch))
+
+    # Title
+    elements.append(Paragraph(
+        "Ideation Session Transcript",
+        styles['Q101Title']
+    ))
+
+    elements.append(Spacer(1, 0.3 * inch))
+
+    # Topic
+    elements.append(Paragraph(
+        f"<b>{topic}</b>",
+        styles['Q101Subtitle']
+    ))
+
+    elements.append(Spacer(1, 0.5 * inch))
+
+    # Session info table
+    info_data = [
+        ['Session ID:', session_id],
+        ['Date:', date],
+        ['Framework:', 'Q101 Agentic Coding Framework'],
+    ]
+
+    info_table = Table(info_data, colWidths=[1.5 * inch, 4 * inch])
+    info_table.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+        ('FONTNAME', (1, 0), (1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('TEXTCOLOR', (0, 0), (0, -1), Q101_GRAY),
+        ('TEXTCOLOR', (1, 0), (1, -1), Q101_DARK_TEXT),
+        ('ALIGN', (0, 0), (0, -1), 'RIGHT'),
+        ('ALIGN', (1, 0), (1, -1), 'LEFT'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+    ]))
+
+    elements.append(info_table)
+
+    elements.append(Spacer(1, 1 * inch))
+
+    # Q101 branding note
+    elements.append(Paragraph(
+        "Generated by Q101 Framework /ideate command",
+        ParagraphStyle(
+            'BrandNote',
+            fontSize=9,
+            textColor=Q101_GRAY,
+            alignment=TA_CENTER,
+        )
+    ))
+
+    elements.append(PageBreak())
+
+    return elements
+
+
+def convert_markdown_to_paragraph(text: str, style: ParagraphStyle) -> Paragraph:
+    """Convert markdown formatting to reportlab paragraph."""
+    # Convert bold
+    text = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', text)
+    text = re.sub(r'__(.+?)__', r'<b>\1</b>', text)
+
+    # Convert italic
+    text = re.sub(r'\*(.+?)\*', r'<i>\1</i>', text)
+    text = re.sub(r'_(.+?)_', r'<i>\1</i>', text)
+
+    # Convert code
+    text = re.sub(r'`(.+?)`', r'<font name="Courier">\1</font>', text)
+
+    # Handle line breaks
+    text = text.replace('\n', '<br/>')
+
+    # Escape special characters
+    text = text.replace('&', '&amp;')
+    text = text.replace('<br/>', '\n<br/>\n')  # Preserve our line breaks
+
+    return Paragraph(text, style)
+
+
+def build_table_element(table_text: str) -> Table:
+    """Convert markdown table to reportlab Table."""
+    rows = parse_markdown_table(table_text)
+
+    if not rows:
+        return None
+
+    # Calculate column widths
+    num_cols = max(len(row) for row in rows)
+    col_width = 6.5 * inch / num_cols
+
+    # Normalize rows to same column count
+    normalized_rows = []
+    for row in rows:
+        while len(row) < num_cols:
+            row.append('')
+        normalized_rows.append(row)
+
+    table = Table(normalized_rows, colWidths=[col_width] * num_cols)
+
+    # Style the table
+    style_commands = [
+        # Header row
+        ('BACKGROUND', (0, 0), (-1, 0), Q101_BLUE),
+        ('TEXTCOLOR', (0, 0), (-1, 0), Q101_WHITE),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 9),
+
+        # Body rows
+        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 1), (-1, -1), 9),
+        ('TEXTCOLOR', (0, 1), (-1, -1), Q101_DARK_TEXT),
+
+        # Alternating row colors
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [Q101_WHITE, Q101_LIGHT_BLUE]),
+
+        # Alignment and padding
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ('LEFTPADDING', (0, 0), (-1, -1), 8),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+
+        # Grid
+        ('GRID', (0, 0), (-1, -1), 0.5, Q101_GRAY),
+    ]
+
+    table.setStyle(TableStyle(style_commands))
+
+    return table
+
+
+def build_diagram_element(text: str, styles: dict) -> Preformatted:
+    """Create a preformatted element for ASCII diagrams."""
+    return Preformatted(text, styles['Q101Mono'])
+
+
+def build_turn_elements(turn: ConversationTurn, styles: dict) -> List:
+    """Build elements for a single conversation turn."""
+    elements = []
+
+    if turn.turn_type == TurnType.PHASE_HEADER:
+        # Phase headers get special treatment
+        header_text = turn.content.lstrip('#').strip()
+        elements.append(Spacer(1, 0.2 * inch))
+
+        # Create a colored background box for phase header
+        phase_table = Table([[header_text]], colWidths=[6.5 * inch])
+        phase_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), Q101_BLUE),
+            ('TEXTCOLOR', (0, 0), (-1, -1), Q101_WHITE),
+            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 14),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('TOPPADDING', (0, 0), (-1, -1), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
+        ]))
+        elements.append(phase_table)
+        elements.append(Spacer(1, 0.15 * inch))
+
+    elif turn.turn_type == TurnType.QUESTION:
+        elements.append(Paragraph("ASSISTANT:", styles['Q101SpeakerLabel']))
+
+        # Check if content has tables
+        tables = extract_tables(turn.content)
+        if tables:
+            # Split content around tables
+            content = turn.content
+            last_end = 0
+
+            for start, end, table_text in tables:
+                # Text before table
+                lines = content.split('\n')
+                pre_table = '\n'.join(lines[:start])
+                if pre_table.strip():
+                    elements.append(convert_markdown_to_paragraph(
+                        pre_table.strip(),
+                        styles['Q101Question']
+                    ))
+
+                # Table
+                table_elem = build_table_element(table_text)
+                if table_elem:
+                    elements.append(Spacer(1, 0.1 * inch))
+                    elements.append(table_elem)
+                    elements.append(Spacer(1, 0.1 * inch))
+
+                last_end = end
+
+            # Text after last table
+            post_table = '\n'.join(content.split('\n')[last_end:])
+            if post_table.strip():
+                elements.append(convert_markdown_to_paragraph(
+                    post_table.strip(),
+                    styles['Q101Body']
+                ))
+        else:
+            elements.append(convert_markdown_to_paragraph(
+                turn.content,
+                styles['Q101Question']
+            ))
+
+    elif turn.turn_type == TurnType.ANSWER:
+        elements.append(Paragraph("USER:", styles['Q101SpeakerLabel']))
+
+        # User answers in light blue box
+        answer_table = Table([[turn.content]], colWidths=[6.3 * inch])
+        answer_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), Q101_LIGHT_BLUE),
+            ('TEXTCOLOR', (0, 0), (-1, -1), Q101_DARK_TEXT),
+            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('LEFTPADDING', (0, 0), (-1, -1), 10),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 10),
+        ]))
+        elements.append(answer_table)
+
+    elif turn.turn_type == TurnType.TABLE:
+        table_elem = build_table_element(turn.content)
+        if table_elem:
+            elements.append(Spacer(1, 0.1 * inch))
+            elements.append(table_elem)
+            elements.append(Spacer(1, 0.1 * inch))
+
+    elif turn.turn_type == TurnType.DIAGRAM:
+        elements.append(Spacer(1, 0.1 * inch))
+        elements.append(build_diagram_element(turn.content, styles))
+        elements.append(Spacer(1, 0.1 * inch))
+
+    elif turn.turn_type == TurnType.SUMMARY:
+        elements.append(Paragraph("SUMMARY:", styles['Q101SpeakerLabel']))
+
+        summary_table = Table([[turn.content]], colWidths=[6.3 * inch])
+        summary_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), Q101_LIGHT_GOLD),
+            ('TEXTCOLOR', (0, 0), (-1, -1), Q101_DARK_TEXT),
+            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('LEFTPADDING', (0, 0), (-1, -1), 10),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 10),
+        ]))
+        elements.append(summary_table)
+
+    else:  # NARRATIVE
+        elements.append(Paragraph("ASSISTANT:", styles['Q101SpeakerLabel']))
+        elements.append(convert_markdown_to_paragraph(
+            turn.content,
+            styles['Q101Body']
+        ))
+
+    elements.append(Spacer(1, 0.1 * inch))
+
+    return elements
+
+
+def create_conversation_pdf(
+    turns: List[ConversationTurn],
+    output_path: str,
+    session_id: str,
+    topic: str,
+    date: Optional[str] = None
+):
+    """Generate Q101-branded PDF from parsed conversation."""
+    if date is None:
+        date = datetime.now().strftime("%Y-%m-%d")
+
+    # Create document
+    doc = SimpleDocTemplate(
+        output_path,
+        pagesize=letter,
+        topMargin=0.6 * inch,
+        bottomMargin=0.5 * inch,
+        leftMargin=0.75 * inch,
+        rightMargin=0.75 * inch,
+    )
+
+    styles = get_q101_styles()
+
+    # Build story
+    story = []
+
+    # Title page
+    story.extend(build_title_page(topic, session_id, date, styles))
+
+    # Conversation turns
+    for turn in turns:
+        turn_elements = build_turn_elements(turn, styles)
+        story.extend(turn_elements)
+
+    # Build PDF with header/footer
+    def add_header_footer(canvas, doc):
+        create_header_footer(canvas, doc, session_id, topic)
+
+    doc.build(story, onFirstPage=add_header_footer, onLaterPages=add_header_footer)
+
+    return output_path
+
+
+def export_conversation_to_pdf(
+    input_path: str,
+    output_path: str,
+    session_id: str,
+    topic: str,
+    date: Optional[str] = None,
+    is_raw: bool = True
+) -> str:
+    """
+    Main entry point for conversation PDF export.
+
+    Args:
+        input_path: Path to input file (raw text or ideate_conversation.md)
+        output_path: Path for output PDF
+        session_id: Session identifier
+        topic: Ideation topic
+        date: Session date (optional, defaults to today)
+        is_raw: True if input is raw pasted text, False if pre-formatted
+
+    Returns:
+        Path to generated PDF
+    """
+    # Parse the conversation
+    if is_raw:
+        with open(input_path, 'r', encoding='utf-8') as f:
+            raw_text = f.read()
+        turns = parse_raw_conversation(raw_text)
+    else:
+        turns = parse_conversation_file(input_path)
+
+    if not turns:
+        raise ValueError("No conversation content found after filtering")
+
+    # Generate PDF
+    return create_conversation_pdf(turns, output_path, session_id, topic, date)
+
+
+if __name__ == "__main__":
+    import sys
+
+    if len(sys.argv) < 5:
+        print("Usage: python conversation_to_pdf.py <input_file> <output_pdf> <session_id> <topic> [--formatted]")
+        sys.exit(1)
+
+    input_file = sys.argv[1]
+    output_file = sys.argv[2]
+    session_id = sys.argv[3]
+    topic = sys.argv[4]
+    is_raw = "--formatted" not in sys.argv
+
+    result = export_conversation_to_pdf(
+        input_file,
+        output_file,
+        session_id,
+        topic,
+        is_raw=is_raw
+    )
+
+    print(f"PDF generated: {result}")

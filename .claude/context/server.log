@@ -1,0 +1,45 @@
+
+> goal-getter-app@0.1.0 dev
+> next dev
+
+   ▲ Next.js 15.5.12
+   - Local:        http://localhost:3000
+   - Network:      http://192.168.8.109:3000
+   - Environments: .env
+   - Experiments (use with caution):
+     · serverActions
+
+ ✓ Starting...
+ ✓ Ready in 3.2s
+ ✓ Compiled /middleware in 505ms (194 modules)
+ ○ Compiling /login ...
+ ✓ Compiled /login in 2.7s (836 modules)
+ GET /login 200 in 3567ms
+ ✓ Compiled in 981ms (235 modules)
+ ○ Compiling /api/auth/login ...
+ ✓ Compiled /api/auth/login in 2.9s (1046 modules)
+ POST /api/auth/login 500 in 3561ms
+ HEAD /login 200 in 324ms
+ POST /api/auth/login 401 in 46ms
+ POST /api/auth/login 401 in 22ms
+ POST /api/auth/login 200 in 140ms
+ POST /api/auth/login 401 in 18ms
+ ✓ Compiled /api/auth/me in 405ms (1048 modules)
+ GET /api/auth/me 200 in 620ms
+ ○ Compiling /l1 ...
+ ✓ Compiled /l1 in 817ms (1113 modules)
+ GET /l1 200 in 1311ms
+ ✓ Compiled /api/auth/logout in 386ms (1115 modules)
+ POST /api/auth/logout 200 in 471ms
+ ○ Compiling /api/seed ...
+ ✓ Compiled /api/seed in 798ms (1125 modules)
+Seeding database...
+Seed error: [Error [LibsqlError]: SQLITE_CONSTRAINT_UNIQUE: UNIQUE constraint failed: batches.name] {
+  code: 'SQLITE_CONSTRAINT_UNIQUE',
+  rawCode: 2067,
+  [cause]: [SqliteError: UNIQUE constraint failed: batches.name] {
+    code: 'SQLITE_CONSTRAINT_UNIQUE',
+    rawCode: 2067
+  }
+}
+ POST /api/seed 500 in 943ms
