@@ -2,6 +2,8 @@
 
 import { useState, useRef, useEffect } from "react";
 import { Mic, MicOff, Sparkles, Send, ChevronDown, ChevronUp, FileText, CheckCircle2, Save, Trash2 } from "lucide-react";
+import { scanForPII } from "@/lib/utils/pii-scan";
+import { UpgradeModuleBanner } from "@/components/ui/UpgradeModuleBanner";
 import {
   createCoachSession,
   updateSessionTranscript,
@@ -189,6 +191,11 @@ export function AICoachTab({ studentId, studentName, weekNumber, onSendToAskAI }
 
   async function analyze() {
     if (!transcriptRef.current.trim()) return;
+    const scan = scanForPII(transcriptRef.current);
+    if (!scan.clean) {
+      const ok = window.confirm(`⚠️ Privacy Check\n\nTranscript may contain: ${scan.warnings.join(", ")}.\n\nIt will be automatically redacted before reaching the AI.\n\nSend anyway?`);
+      if (!ok) return;
+    }
     // Create session lazily if not yet created (also implies save)
     const id = await ensureSession();
     await updateSessionTranscript(id, transcriptRef.current);
@@ -234,6 +241,7 @@ export function AICoachTab({ studentId, studentName, weekNumber, onSendToAskAI }
 
   return (
     <div className="space-y-8">
+      <UpgradeModuleBanner />
       {/* === RECORD NEW SESSION === */}
       <div className="bg-card border border-border rounded-xl p-5 space-y-5">
         <div className="flex items-center gap-2">

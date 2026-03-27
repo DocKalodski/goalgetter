@@ -30,7 +30,7 @@ interface CouncilRanking {
 }
 
 export function L1CouncilRankingsPage() {
-  const { setL1SubView, setCurrentPage, setSelectedCouncilId } = useNavigation();
+  const { setL1SubView, setL1ManageOpen, setCurrentPage, setSelectedCouncilId } = useNavigation();
   const [rankings, setRankings] = useState<CouncilRanking[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -70,7 +70,7 @@ export function L1CouncilRankingsPage() {
       {/* Header */}
       <div className="flex items-center gap-3">
         <button
-          onClick={() => setL1SubView("overview")}
+          onClick={() => { setL1SubView("overview"); setL1ManageOpen(true); }}
           className="p-2 rounded-lg hover:bg-muted transition-colors"
         >
           <ArrowLeft className="h-5 w-5" />

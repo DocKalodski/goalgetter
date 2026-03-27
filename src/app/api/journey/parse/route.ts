@@ -1,22 +1,41 @@
 import { NextRequest, NextResponse } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
+import { llmChat } from "@/lib/llm";
 import { verifyToken } from "@/lib/auth/jwt";
 import { cookies } from "next/headers";
-
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+import { nerRedact } from "@/lib/utils/sanitize-pii";
 
 async function getUser() {
   const cookieStore = await cookies();
-  const token = cookieStore.get("auth_token")?.value;
+  const token = cookieStore.get("access_token")?.value;
   if (!token) return null;
   return verifyToken(token);
 }
 
-// POST /api/journey/parse
-// Takes a raw transcript + entry type, returns structured field suggestions
+// Scrub any [Name]: speaker tags — replace with generic [Speaker A], [Speaker B] etc.
+function scrubSpeakerTags(transcript: string): string {
+  const tagMap = new Map<string, string>();
+  const labels = ["Speaker A", "Speaker B", "Speaker C", "Speaker D", "Speaker E"];
+  let labelIndex = 0;
+
+  return transcript.replace(/\[([^\]]+)\]:/g, (match, name) => {
+    const key = name.trim().toLowerCase();
+    if (!tagMap.has(key)) {
+      tagMap.set(key, labels[labelIndex % labels.length]);
+      labelIndex++;
+    }
+    return `[${tagMap.get(key)}]:`;
+  });
+}
+
+// POST /api/journey/parse — coaches only
 export async function POST(req: NextRequest) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  // Only coaches and head coaches can send transcripts to AI
+  if (user.role !== "coach" && user.role !== "head_coach") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   const { transcript, entryType } = await req.json();
   if (!transcript || !entryType) {
@@ -63,18 +82,14 @@ Extract these fields. Return ONLY valid JSON:
   };
 
   const systemPrompt = prompts[entryType] || prompts.oo;
+  // Scrub speaker tags then NER-redact remaining names/orgs in transcript body
+  const anonymizedTranscript = await nerRedact(scrubSpeakerTags(transcript));
 
   try {
-    const response = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 512,
-      system: systemPrompt,
-      messages: [{ role: "user", content: `Transcript:\n\n${transcript}` }],
-    });
-
-    const text = response.content[0].type === "text" ? response.content[0].text : "{}";
-
-    // Extract JSON from response
+    const text = await llmChat(
+      [{ role: "user", content: `Transcript:\n\n${anonymizedTranscript}` }],
+      { tier: "fast", maxTokens: 512, system: systemPrompt }
+    );
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : {};
 

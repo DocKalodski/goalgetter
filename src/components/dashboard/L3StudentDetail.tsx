@@ -10,13 +10,9 @@ import { AttendanceTab } from "./AttendanceTab";
 import { FeedbackTab } from "./FeedbackTab";
 import { ActionPlannerTab } from "./ActionPlannerTab";
 import { PerformanceBanner } from "./PerformanceBanner";
-import { AskAITab } from "./AskAITab";
 import { CoachNotesPanel } from "./CoachNotesPanel";
-import { JourneyJournalTab } from "./JourneyJournalTab";
-import { StudentCalendarWidget } from "./StudentCalendarWidget";
 import { ArrowLeft } from "lucide-react";
 import { useReminderNotifications } from "@/lib/hooks/useReminderNotifications";
-import { usePreCallNotifications } from "@/lib/hooks/usePreCallNotifications";
 
 interface StudentInfo {
   id: string;
@@ -180,7 +176,7 @@ export function L3StudentDetail() {
               className={`pb-3 text-base font-semibold border-b-2 transition-colors flex items-center gap-1.5 whitespace-nowrap ${activeL3Tab === "ask-ai" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}
             >
               <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-primary/15 text-primary text-[9px] font-bold">AI</span>
-              Ask AI
+              Ask AI<BetaPill />
             </button>
           )}
           {isCoach && (
@@ -189,6 +185,22 @@ export function L3StudentDetail() {
               className={`pb-3 text-base font-semibold border-b-2 transition-colors whitespace-nowrap ${activeL3Tab === "feedback" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}
             >
               AI Post Assessment (for LEAP 99 Coaches only)
+            </button>
+          )}
+          {isCoach && (
+            <button
+              onClick={() => setActiveL3Tab("ai-coach")}
+              className={`pb-3 text-base font-semibold border-b-2 transition-colors whitespace-nowrap ${activeL3Tab === "ai-coach" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}
+            >
+              🎙 AI Coach<BetaPill />
+            </button>
+          )}
+          {isCoach && (
+            <button
+              onClick={() => setActiveL3Tab("voice-coach")}
+              className={`pb-3 text-base font-semibold border-b-2 transition-colors whitespace-nowrap ${activeL3Tab === "voice-coach" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}
+            >
+              🤖 Voice AI Coach<BetaPill />
             </button>
           )}
         </div>
@@ -251,6 +263,29 @@ export function L3StudentDetail() {
           currentWeek={weekInfo.currentWeek}
           isCoach={isCoach}
           preCallMinutes={preCallMinutes}
+        />
+      ) : activeL3Tab === "ai-coach" ? (
+        <AICoachTab
+          studentId={targetId}
+          studentName={student.name?.split(" ")[0] ?? student.email}
+          weekNumber={weekInfo.reportingWeek}
+          onSendToAskAI={(msg) => { setAiCoachInitialMessage(msg); setActiveL3Tab("ask-ai"); }}
+        />
+      ) : activeL3Tab === "voice-coach" ? (
+        <VoiceAICoachTab
+          students={[{ id: targetId, name: student.name }]}
+          defaultStudentId={targetId}
+          weekNumber={weekInfo.reportingWeek}
+          studentContext={{
+            studentName: student.name?.split(" ")[0] ?? student.email,
+            enrollmentResults: student.enrollmentResults,
+            personalResults: student.personalResults,
+            professionalResults: student.professionalResults,
+            enrollmentCurrentWeek: student.enrollmentCurrentWeek,
+            personalCurrentWeek: student.personalCurrentWeek,
+            professionalCurrentWeek: student.professionalCurrentWeek,
+            reportingWeek: weekInfo.reportingWeek,
+          }}
         />
       ) : (
         <ActionPlannerTab studentId={targetId} />

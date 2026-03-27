@@ -7,7 +7,8 @@ import { getAuthUser, isHeadCoach,
 import { eq, and, inArray, desc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { createId } from "@paralleldrive/cuid2";
-import Anthropic from "@anthropic-ai/sdk";
+import { llmChat } from "@/lib/llm";
+import { nerRedact, PRIVACY_CLAUSE } from "@/lib/utils/sanitize-pii";
 
 export interface MilestoneAlignmentData {
   weekNumber: number;
@@ -162,22 +163,26 @@ export async function assessGoalDeclarationFit(
   const user = await getAuthUser();
   if (!user) throw new Error("Unauthorized");
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new Error("ANTHROPIC_API_KEY not configured");
+  // NER redaction — strip person names, orgs, places from all free-form text
+  const [safeDeclaration, safeGoal, safeValues] = await Promise.all([
+    nerRedact(declaration),
+    nerRedact(goalStatement),
+    valuesDeclaration ? nerRedact(valuesDeclaration) : Promise.resolve(null),
+  ]);
 
-  const client = new Anthropic({ apiKey });
+  const prompt = `${PRIVACY_CLAUSE}
 
-  const prompt = `You are evaluating how well a student's goal statement honors their personal declaration in a 12-week goal achievement program (LEAP 99).
+You are evaluating how well a student's goal statement honors their personal declaration in a 12-week goal achievement program (LEAP 99).
 
 DECLARATION (the student's big commitment):
-"${declaration}"
+"${safeDeclaration}"
 
 GOAL TYPE: ${goalType}
 
 GOAL STATEMENT:
-"${goalStatement}"
+"${safeGoal}"
 
-${valuesDeclaration ? `VALUES the student listed:\n"${valuesDeclaration}"\n` : ""}
+${safeValues ? `VALUES the student listed:\n"${safeValues}"\n` : ""}
 
 Evaluate across 3 dimensions (each 0–100):
 
@@ -200,13 +205,7 @@ Respond ONLY with valid JSON in this exact format:
   "suggestedTweak": "<1-2 sentence goal rewrite>"
 }`;
 
-  const message = await client.messages.create({
-    model: "claude-haiku-4-5-20251001",
-    max_tokens: 512,
-    messages: [{ role: "user", content: prompt }],
-  });
-
-  const raw = message.content[0].type === "text" ? message.content[0].text : "";
+  const raw = await llmChat([{ role: "user", content: prompt }], { tier: "smart", maxTokens: 512 });
 
   // Extract JSON from response (handle any leading/trailing text)
   const jsonMatch = raw.match(/\{[\s\S]*\}/);

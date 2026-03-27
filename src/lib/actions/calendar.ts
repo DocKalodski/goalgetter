@@ -5,7 +5,8 @@ import { weeklyMilestones, goals, batches, users } from "@/lib/db/schema";
 import { getAuthUser, isHeadCoach,
 } from "@/lib/auth/jwt";
 import { eq } from "drizzle-orm";
-import Anthropic from "@anthropic-ai/sdk";
+import { llmChat } from "@/lib/llm";
+import { PRIVACY_CLAUSE } from "@/lib/utils/sanitize-pii";
 
 export type GoalType = "enrollment" | "personal" | "professional";
 
@@ -331,7 +332,9 @@ export async function analyzeCalendarLoad(stats: CalendarLoadStats): Promise<str
 
   const dayTotals = DAY.map((d, i) => `${d}:${stats.totalByDay[i]}`).join("  ");
 
-  const prompt = `You are a performance coaching advisor reviewing a student's 12-week action calendar.
+  const prompt = `${PRIVACY_CLAUSE}
+
+You are a performance coaching advisor reviewing a student's 12-week action calendar.
 
 Action step distribution (Mon–Fri only):
 ${weekLines}
@@ -352,12 +355,6 @@ Rules:
 - Each bullet max 15 words
 - Be direct and coaching-positive (not critical)`;
 
-  const client = new Anthropic();
-  const response = await client.messages.create({
-    model: "claude-haiku-4-5-20251001",
-    max_tokens: 350,
-    messages: [{ role: "user", content: prompt }],
-  });
-
-  return response.content[0].type === "text" ? response.content[0].text.trim() : "";
+  const text = await llmChat([{ role: "user", content: prompt }], { tier: "fast", maxTokens: 350 });
+  return text.trim();
 }

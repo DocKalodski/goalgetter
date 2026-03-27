@@ -1,6 +1,7 @@
 "use client";
 
 import { useNavigation } from "@/components/layout/DashboardShell";
+import { L1OverviewPage } from "./L1OverviewPage";
 import { L2OverviewPage } from "./L2OverviewPage";
 import { L1CoachesPage } from "./L1CoachesPage";
 import { L1StudentsPage } from "./L1StudentsPage";

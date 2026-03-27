@@ -202,7 +202,7 @@ export function PerformanceBanner({
           </div>
           <div>
             <p className="text-base text-white uppercase tracking-widest font-bold">
-              Performance Report &mdash; as of Monday, March 23, 2026
+              Performance Report &mdash; as of {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
             </p>
             <p className="text-lg font-bold">
               Week {displayWeek}

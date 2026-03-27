@@ -3,15 +3,18 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   addCoach, getCoaches, updateCoach, deleteCoach, toggleCoachAllCouncilsView,
+  updateCoachPermissions,
 } from "@/lib/actions/user-management";
+import { HC_PERMISSION_FLAGS } from "@/lib/config/permissions";
 import {
-  UserPlus, Plus, Pencil, Trash2, Check, X, Globe, GlobeLock, AlertTriangle,
+  UserPlus, Plus, Pencil, Trash2, Check, X, Globe, GlobeLock, AlertTriangle, ShieldCheck,
 } from "lucide-react";
 
 interface Coach {
   id: string; name: string | null; email: string;
   approvalStatus: string; councilName: string; councilId: string | null;
   canViewAllCouncils: number;
+  permissions: string | null;
 }
 
 interface ManageCoachesPanelProps {
@@ -36,6 +39,10 @@ export function ManageCoachesPanel({ refreshKey = 0, onChanged }: ManageCoachesP
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const [permissionsOpenId, setPermissionsOpenId] = useState<string | null>(null);
+  const [permissionsDraft, setPermissionsDraft] = useState<Record<string, string[]>>({});
+  const [savingPermissionsId, setSavingPermissionsId] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -87,6 +94,32 @@ export function ManageCoachesPanel({ refreshKey = 0, onChanged }: ManageCoachesP
       await toggleCoachAllCouncilsView(id, current === 0);
       await reload(); onChanged?.();
     } catch (e) { console.error(e); }
+  }
+
+  function openPermissions(coach: Coach) {
+    let perms: string[] = [];
+    try { perms = coach.permissions ? JSON.parse(coach.permissions) : []; } catch { perms = []; }
+    setPermissionsDraft((prev) => ({ ...prev, [coach.id]: perms }));
+    setPermissionsOpenId((prev) => (prev === coach.id ? null : coach.id));
+  }
+
+  function togglePermission(coachId: string, flag: string) {
+    setPermissionsDraft((prev) => {
+      const current = prev[coachId] || [];
+      return {
+        ...prev,
+        [coachId]: current.includes(flag) ? current.filter((f) => f !== flag) : [...current, flag],
+      };
+    });
+  }
+
+  async function savePermissions(coachId: string) {
+    setSavingPermissionsId(coachId);
+    try {
+      await updateCoachPermissions(coachId, permissionsDraft[coachId] || []);
+      setPermissionsOpenId(null);
+      await reload(); onChanged?.();
+    } catch (e) { console.error(e); } finally { setSavingPermissionsId(null); }
   }
 
   if (loading) return (
@@ -156,6 +189,11 @@ export function ManageCoachesPanel({ refreshKey = 0, onChanged }: ManageCoachesP
             const isSaving = savingId === coach.id;
             const isConfirmDelete = confirmDeleteId === coach.id;
             const isDeleting = deletingId === coach.id;
+            const isPermissionsOpen = permissionsOpenId === coach.id;
+            const isSavingPerms = savingPermissionsId === coach.id;
+            let coachPerms: string[] = [];
+            try { coachPerms = coach.permissions ? JSON.parse(coach.permissions) : []; } catch { coachPerms = []; }
+            const permDraft = permissionsDraft[coach.id] ?? coachPerms;
 
             return (
               <div key={coach.id} className="rounded-xl border border-border overflow-hidden">
@@ -184,7 +222,7 @@ export function ManageCoachesPanel({ refreshKey = 0, onChanged }: ManageCoachesP
                     <p className="text-xs text-muted-foreground truncate mt-0.5">{coach.email}</p>
                   </div>
 
-                  {/* Permission toggle */}
+                  {/* Permission toggle — view all councils */}
                   <button
                     onClick={() => handleToggle(coach.id, coach.canViewAllCouncils)}
                     title={coach.canViewAllCouncils ? "Revoke all-councils view" : "Grant all-councils view"}
@@ -196,6 +234,22 @@ export function ManageCoachesPanel({ refreshKey = 0, onChanged }: ManageCoachesP
                   >
                     {coach.canViewAllCouncils ? <Globe className="h-3 w-3" /> : <GlobeLock className="h-3 w-3" />}
                     <span className="hidden sm:inline">{coach.canViewAllCouncils ? "All Councils" : "Own Only"}</span>
+                  </button>
+
+                  {/* HC Modules button */}
+                  <button
+                    onClick={() => openPermissions(coach)}
+                    title="HC module access"
+                    className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border transition-colors shrink-0 ${
+                      isPermissionsOpen || coachPerms.length > 0
+                        ? "bg-primary/10 text-primary border-primary/30 hover:bg-primary/20"
+                        : "bg-muted/60 text-muted-foreground border-border hover:bg-muted"
+                    }`}
+                  >
+                    <ShieldCheck className="h-3 w-3" />
+                    <span className="hidden sm:inline">
+                      {coachPerms.length > 0 ? `${coachPerms.length} Module${coachPerms.length > 1 ? "s" : ""}` : "HC Access"}
+                    </span>
                   </button>
 
                   {/* Edit / Delete */}
@@ -231,6 +285,45 @@ export function ManageCoachesPanel({ refreshKey = 0, onChanged }: ManageCoachesP
                         {isSaving ? "Saving…" : <><Check className="h-3.5 w-3.5" /> Save</>}
                       </button>
                       <button onClick={() => setEditingId(null)} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors">Cancel</button>
+                    </div>
+                  </div>
+                )}
+
+                {/* HC Module permissions panel */}
+                {isPermissionsOpen && (
+                  <div className="border-t border-primary/20 bg-primary/5 px-4 py-3 space-y-3">
+                    <p className="text-xs font-semibold text-primary uppercase tracking-wider">HC Module Access</p>
+                    <p className="text-xs text-muted-foreground">
+                      Standard coach functions are all ON by default. These unlock HC-only modules.
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {HC_PERMISSION_FLAGS.map((flag) => {
+                        const enabled = permDraft.includes(flag.id);
+                        return (
+                          <label key={flag.id} className={`flex items-start gap-3 px-3 py-2.5 rounded-lg border cursor-pointer transition-colors ${enabled ? "bg-primary/10 border-primary/30" : "bg-card border-border hover:bg-muted/40"}`}>
+                            <input
+                              type="checkbox"
+                              checked={enabled}
+                              onChange={() => togglePermission(coach.id, flag.id)}
+                              className="mt-0.5 shrink-0"
+                            />
+                            <div>
+                              <p className={`text-xs font-semibold ${enabled ? "text-primary" : "text-foreground"}`}>{flag.label}</p>
+                              <p className="text-[10px] text-muted-foreground">{flag.desc}</p>
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        onClick={() => savePermissions(coach.id)}
+                        disabled={isSavingPerms}
+                        className="flex items-center gap-2 px-4 py-2 text-xs font-semibold bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                      >
+                        {isSavingPerms ? "Saving…" : <><Check className="h-3 w-3" /> Save Access</>}
+                      </button>
+                      <button onClick={() => setPermissionsOpenId(null)} className="px-4 py-2 text-xs text-muted-foreground hover:text-foreground transition-colors">Cancel</button>
                     </div>
                   </div>
                 )}

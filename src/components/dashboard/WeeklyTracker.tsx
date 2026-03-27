@@ -275,13 +275,16 @@ export function WeeklyTracker({
           const pctVal = getEditValue(week.weekNumber, "percentage", String(week.cumulativePercentage));
           return (
           <div key={week.weekNumber} className={isCurrent ? "border-l-2 border-primary bg-primary/5" : ""}>
-            <button
+            <div
+              role="button"
+              tabIndex={0}
               onClick={() =>
                 setExpandedWeek(
                   expandedWeek === week.weekNumber ? null : week.weekNumber
                 )
               }
-              className="w-full flex items-center justify-between p-4 hover:bg-muted/30 transition-colors text-left"
+              onKeyDown={(e) => e.key === "Enter" && setExpandedWeek(expandedWeek === week.weekNumber ? null : week.weekNumber)}
+              className="w-full flex items-center justify-between p-4 hover:bg-muted/30 transition-colors text-left cursor-pointer"
             >
               <div className="flex items-center gap-3 flex-1 min-w-0">
                 <div className="shrink-0">
@@ -340,7 +343,7 @@ export function WeeklyTracker({
                   </div>
                 </div>
               </div>
-            </button>
+            </div>
 
             {expandedWeek === week.weekNumber && (
               <div className="px-4 pb-4 space-y-4 bg-muted/10">

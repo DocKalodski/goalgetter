@@ -3,8 +3,10 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import {
   Bot, Send, RotateCcw, Sparkles, User, Mic, MicOff,
-  ChevronDown, ChevronUp, FileText, CheckCircle2, Save, Trash2,
+  ChevronDown, ChevronUp, FileText, CheckCircle2, Save, Trash2, ShieldAlert,
 } from "lucide-react";
+import { scanForPII } from "@/lib/utils/pii-scan";
+import { UpgradeModuleBanner } from "@/components/ui/UpgradeModuleBanner";
 import {
   createCoachSession,
   updateSessionTranscript,
@@ -138,8 +140,19 @@ export function AskAITab({
 
   // ── Chat ──────────────────────────────────────────────────────
 
-  const sendMessage = useCallback(async function sendMessage(text: string) {
+  const sendMessage = useCallback(async function sendMessage(text: string, bypassScan = false) {
     if (!text.trim() || streaming) return;
+
+    // Pre-flight PII scan — warn coach before sending if personal data detected
+    if (!bypassScan) {
+      const scan = scanForPII(text.trim());
+      if (!scan.clean) {
+        const proceed = window.confirm(
+          `⚠️ Privacy Check\n\nYour message may contain: ${scan.warnings.join(", ")}.\n\nThis will be automatically redacted before reaching the AI — no real names or identifiers will be sent.\n\nClick OK to send anyway, or Cancel to edit your message.`
+        );
+        if (!proceed) return;
+      }
+    }
 
     const userMsg: Message = { role: "user", content: text.trim() };
     const next = [...messages, userMsg];
@@ -431,7 +444,7 @@ export function AskAITab({
   function sendSummaryToChat() {
     if (!summary || !coachSession) return;
     const msg = `Here is my coaching session transcript summary for ${coachSession.studentName} (Week ${coachSession.weekNumber}):\n\n${summary.summary}\n\nKey Points: ${summary.keyPoints?.join(", ")}\n\nAction Items: ${summary.actionItems?.join(", ")}\n\nBased on this, what coaching questions or strategies should I use next?`;
-    sendMessage(msg);
+    sendMessage(msg, true); // bypass scan — system-generated summary, already redacted server-side
     setSessionOpen(false);
   }
 
@@ -443,6 +456,7 @@ export function AskAITab({
 
   return (
     <div className="flex flex-col gap-4">
+      <UpgradeModuleBanner />
       {/* ── Chat header ── */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">

@@ -6,6 +6,7 @@ import { getBatchMetrics } from "@/lib/actions/batch-overview";
 import { getCouncilsWithStats } from "@/lib/actions/councils";
 import { InsightsPanel } from "./InsightsPanel";
 import { Users, GraduationCap, Target, ArrowRight, Shield, Headphones } from "lucide-react";
+import { BetaPill } from "@/components/ui/UpgradeModuleBanner";
 import { getAchievementStatus } from "@/lib/utils/achievement-status";
 
 interface CouncilStat {
@@ -158,7 +159,7 @@ export function L1OverviewPage() {
             <Headphones className="h-4 w-4 text-purple-400" />
           </div>
           <div>
-            <p className="text-sm font-semibold text-foreground">Coaching Feed</p>
+            <div className="flex items-center gap-1"><p className="text-sm font-semibold text-foreground">Coaching Feed</p><BetaPill /></div>
             <p className="text-xs text-muted-foreground group-hover:underline">Eavesdrop AI →</p>
           </div>
         </button>

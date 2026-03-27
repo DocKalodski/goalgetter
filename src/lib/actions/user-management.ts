@@ -247,6 +247,7 @@ export async function getCoaches() {
       email: users.email,
       approvalStatus: users.approvalStatus,
       canViewAllCouncils: users.canViewAllCouncils,
+      permissions: users.permissions,
       createdAt: users.createdAt,
     })
     .from(users)
@@ -292,6 +293,28 @@ export async function toggleCoachAllCouncilsView(coachId: string, grant: boolean
   await db
     .update(users)
     .set({ canViewAllCouncils: grant ? 1 : 0, updatedAt: new Date() })
+    .where(eq(users.id, coachId));
+
+  return { success: true };
+}
+
+// ─── Head Coach / Developer: Update coach HC-module permissions ───────────
+
+export async function updateCoachPermissions(coachId: string, permissions: string[]) {
+  const user = await getAuthUser();
+  if (!user || !isHeadCoach(user)) throw new Error("Forbidden");
+
+  const [coach] = await db
+    .select({ id: users.id, role: users.role })
+    .from(users)
+    .where(eq(users.id, coachId))
+    .limit(1);
+
+  if (!coach || coach.role !== "coach") return { success: false, error: "Coach not found" };
+
+  await db
+    .update(users)
+    .set({ permissions: permissions.length ? JSON.stringify(permissions) : null, updatedAt: new Date() })
     .where(eq(users.id, coachId));
 
   return { success: true };

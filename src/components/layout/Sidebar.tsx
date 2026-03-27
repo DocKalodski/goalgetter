@@ -25,14 +25,14 @@ export function Sidebar({ open, onClose, user }: SidebarProps) {
       level: "L3",
       label: "Student Goals",
       icon: User,
-      roles: ["council_leader", "student"],
+      roles: ["council_leader", "student", "facilitator"],
       tag: "L3",
     },
     {
       level: "profile",
       label: "My Profile",
       icon: Settings,
-      roles: ["council_leader", "student"],
+      roles: ["council_leader", "student", "facilitator"],
     },
   ];
 
@@ -61,7 +61,7 @@ export function Sidebar({ open, onClose, user }: SidebarProps) {
             <h1 className="text-xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
               GoalGetter
             </h1>
-            <p className="text-xs text-muted-foreground">by Doc Kalodski</p>
+            <p className="text-xs text-muted-foreground">by Doc Kalodski · v1.9</p>
           </div>
           <button
             onClick={onClose}

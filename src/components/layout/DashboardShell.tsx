@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, createContext, useContext } from "react";
-import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
 import type { JWTPayload } from "@/lib/auth/jwt";
 
@@ -15,6 +14,8 @@ interface NavigationContextType {
   setCurrentPage: (page: NavigationLevel) => void;
   l1SubView: L1SubView;
   setL1SubView: (view: L1SubView) => void;
+  l1ManageOpen: boolean;
+  setL1ManageOpen: (open: boolean) => void;
   l2SubView: L2SubView;
   setL2SubView: (view: L2SubView) => void;
   selectedCouncilId: string | null;
@@ -42,10 +43,11 @@ export function DashboardShell({
 }) {
   const isHC = user.role === "head_coach" || user.canViewAllCouncils;
   const defaultPage: NavigationLevel =
-    isHC ? "L1" : user.role === "coach" ? "L1" : "L3";
+    isHC ? "L1" : user.role === "coach" ? "L2" : "L3";
 
   const [currentPage, setCurrentPage] = useState<NavigationLevel>(defaultPage);
   const [l1SubView, setL1SubView] = useState<L1SubView>("overview");
+  const [l1ManageOpen, setL1ManageOpen] = useState(false);
   const [l2SubView, setL2SubView] = useState<L2SubView>("overview");
   const [selectedCouncilId, setSelectedCouncilId] = useState<string | null>(null);
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
@@ -54,7 +56,6 @@ export function DashboardShell({
   >("enrollment");
   const [activeL3Tab, setActiveL3Tab] = useState<L3Tab>("action-planner");
   const [aiCoachInitialMessage, setAiCoachInitialMessage] = useState<string | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
     <NavigationContext.Provider
@@ -63,6 +64,8 @@ export function DashboardShell({
         setCurrentPage,
         l1SubView,
         setL1SubView,
+        l1ManageOpen,
+        setL1ManageOpen,
         l2SubView,
         setL2SubView,
         selectedCouncilId,
@@ -79,11 +82,8 @@ export function DashboardShell({
       }}
     >
       <div className="flex h-screen overflow-hidden">
-        {!isHC && user.role !== "coach" && (
-          <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} user={user} />
-        )}
         <div className="flex-1 flex flex-col overflow-hidden">
-          <Header user={user} onMenuClick={() => setSidebarOpen(true)} />
+          <Header user={user} />
           <main className="flex-1 overflow-y-auto p-4 md:p-6">{children}</main>
         </div>
       </div>

@@ -22,29 +22,34 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Beta kill pill — block everyone once expired
-  if (BETA_EXPIRY && new Date() > BETA_EXPIRY) {
-    return NextResponse.redirect(new URL("/beta-expired", request.url));
-  }
-
   // Check for access token
   const token = request.cookies.get("access_token")?.value;
   if (!token) {
+    // No token — if beta expired redirect to beta-expired, else login
+    if (BETA_EXPIRY && new Date() > BETA_EXPIRY) {
+      return NextResponse.redirect(new URL("/beta-expired", request.url));
+    }
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
   try {
     const { payload } = await jwtVerify(token, JWT_SECRET);
     const role = payload.role as string;
+    const isPrivileged = role === "head_coach" || role === "developer";
 
-    // Kill pill: after Jun 27 2026, only head_coach retains access
-    if (new Date() > ACCESS_EXPIRY && role !== "head_coach") {
+    // Beta kill pill — block non-privileged users once beta has expired
+    if (BETA_EXPIRY && new Date() > BETA_EXPIRY && !isPrivileged) {
+      return NextResponse.redirect(new URL("/beta-expired", request.url));
+    }
+
+    // Kill pill: after Jun 27 2026, only head_coach and developer retain access
+    if (new Date() > ACCESS_EXPIRY && !isPrivileged) {
       return NextResponse.redirect(new URL("/login?expired=1", request.url));
     }
 
     // Role-based route protection
     const canViewAll = payload.canViewAllCouncils === true;
-    if (pathname.startsWith("/l1") && role !== "head_coach" && !canViewAll) {
+    if (pathname.startsWith("/l1") && role !== "head_coach" && role !== "developer" && !canViewAll) {
       const redirect = role === "coach" ? "/l2" : "/l3";
       return NextResponse.redirect(new URL(redirect, request.url));
     }

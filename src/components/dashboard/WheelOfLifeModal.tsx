@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { generateWheelGoals } from "@/lib/actions/wheel-of-life";
+import { scanForPII } from "@/lib/utils/pii-scan";
 
 // ── 12 categories from the Life Assessment Wheel (MWF.v5) ──────────────────
 
@@ -166,6 +167,13 @@ export function WheelOfLifeModal({ studentId, studentName, declaration, onComple
   const [aiGoals, setAiGoals] = useState({ enrollment: "", personal: "", professional: "" });
 
   async function generateGoals() {
+    if (declaration) {
+      const scan = scanForPII(declaration);
+      if (!scan.clean) {
+        const ok = window.confirm(`⚠️ Privacy Check\n\nDeclaration may contain: ${scan.warnings.join(", ")}.\n\nIt will be automatically redacted before reaching the AI.\n\nContinue?`);
+        if (!ok) return;
+      }
+    }
     setStep(2);
     try {
       const result = await generateWheelGoals(studentId, scores, declaration);

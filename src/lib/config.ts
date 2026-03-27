@@ -17,12 +17,14 @@ export const config = {
     callDays: ["Mon", "Tue", "Wed", "Thu", "Fri"] as const,
   },
   roles: {
-    hierarchy: ["head_coach", "coach", "council_leader", "student"] as const,
+    hierarchy: ["head_coach", "developer", "coach", "council_leader", "student", "facilitator"] as const,
     loginDestinations: {
       head_coach: "/l1",
+      developer: "/l1",
       coach: "/l2",
       council_leader: "/l3",
       student: "/l3",
+      facilitator: "/l3",
     } as const,
   },
 } as const;

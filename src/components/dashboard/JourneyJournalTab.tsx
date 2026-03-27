@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { ChevronDown, ChevronUp, Mic, Square, Phone } from "lucide-react";
+import { scanForPII } from "@/lib/utils/pii-scan";
 
 type EntryType = "oo" | "mm" | "cc" | "pp" | "aa";
 
@@ -119,6 +120,11 @@ export function JourneyJournalTab({
 
   const parseTT = async () => {
     if (!ttText.trim()) return;
+    const scan = scanForPII(ttText);
+    if (!scan.clean) {
+      const ok = window.confirm(`⚠️ Privacy Check\n\nTranscript may contain: ${scan.warnings.join(", ")}.\n\nIt will be automatically redacted before reaching the AI.\n\nParse anyway?`);
+      if (!ok) return;
+    }
     setParsing(true);
     try {
       const res = await fetch("/api/journey/parse", {

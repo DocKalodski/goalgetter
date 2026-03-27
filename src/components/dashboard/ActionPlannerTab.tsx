@@ -15,7 +15,10 @@ import {
 import { CheckboxApprovalPanel, type ApprovalField } from "./jj/CheckboxApprovalPanel";
 import { getStudentDetail } from "@/lib/actions/students";
 import { WheelOfLifeModal } from "./WheelOfLifeModal";
+import { GoalTemplateModal } from "./GoalTemplateModal";
 import { saveWheelGoals, improveSmarterField } from "@/lib/actions/wheel-of-life";
+import { scanFields } from "@/lib/utils/pii-scan";
+import { GOAL_TEMPLATES, type GoalTemplate } from "@/lib/data/goal-templates";
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -93,7 +96,7 @@ const DEFAULT_QUESTIONS: MilestoneQuestions = {
   targetCredential: "", currentLevel: "beginner", studyHours: "3", learningMethod: "combination", examDate: "",
 };
 
-interface TestResult { letter: string; label: string; covered: boolean | null; }
+interface TestResult { letter: string; label: string; covered: boolean | null; fix?: string; }
 
 // ─── SMARTER fields ───────────────────────────────────────────────
 
@@ -247,47 +250,45 @@ function testStatement(statement: string, draft: Record<string, string>): TestRe
   const hasNumber = /\d+/.test(stmt);
   const hasDate = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|january|february|march|april|june|july|august|september|october|november|december|\d{4}|week\s*\d+|month\s*\d+)\b/i.test(stmt);
 
+  const FIXES: Record<string, { pass: () => boolean; fix: string }> = {
+    specificDetails: {
+      pass: () => hasNumber || stmt.split(/\s+/).length >= 12,
+      fix: "Add the exact number and method — e.g., \"...enroll 3 clients through personal referrals, 5 conversations/week.\"",
+    },
+    measurableCriteria: {
+      pass: () => hasNumber,
+      fix: "Add a specific number — e.g., \"...at least 5 clients\" or \"...₱15,000 per month\" or \"...by Week 8.\"",
+    },
+    achievableResources: {
+      pass: () => /will|through|by |via |with |using |enroll|contact|call|reach|study|practice|work|build/i.test(stmt),
+      fix: "Mention your method or approach — e.g., \"...through daily outreach via WhatsApp\" or \"...by practicing 4×/week.\"",
+    },
+    relevantAlignment: {
+      pass: () => /first time|never (done|earned|reached|achieved|before)|haven'?t|beyond (my|the)|out of (my )?comfort|new (level|record|territory|high)|push(ing)? (myself|beyond)|double|triple|from \d|increase from|exceed(ing)? (my|past)|surpass|stretch|comfort zone/i.test(stmt),
+      fix: "Show the stretch — e.g., \"...pushing beyond what I've done before\" or \"...for the first time in my life\" or \"...doubling my previous record.\"",
+    },
+    endDate: {
+      pass: () => hasDate,
+      fix: "Add a hard deadline — e.g., \"...by June 19, 2026\" or \"...by Week 8 of LEAP 99.\"",
+    },
+    excitingMotivation: {
+      pass: () => /love|excit|passion|driven|proud|joy|dream|inspir|transform|becom|freedom|courage|legacy|family|father|mother|children|kids|husband|wife|heart|soul|purpose|always wanted|believe|worthy|fire/i.test(stmt),
+      fix: "Add your emotional WHY — e.g., \"...driven by love for my family\" or \"...because I believe in who I'm becoming\" or \"...to prove to myself that I can.\"",
+    },
+    rewardingBenefits: {
+      pass: () => /reward|earn|achiev|bonus|certif|success|win|reach|accomplish|grow|transform|celebrat|treat|gift|prize/i.test(stmt)
+        && /feel|proud|grateful|free|peace|joy|satisf|worthy|recogni|whole|confident|relief/i.test(stmt),
+      fix: "Add both the tangible reward AND how you'll feel — e.g., \"...earning my first ₱10k and feeling the pride of keeping my word.\"",
+    },
+  };
+
   return SMARTER_FIELDS.map((f) => {
     const val = (draft[f.key as string] || "").trim();
-    // If the field isn't filled, mark as not applicable
     if (!val) return { letter: f.letter, label: f.label, covered: null };
-
-    // Test the goal statement for SMARTER characteristics — not keyword overlap
-    let covered: boolean;
-    switch (f.key as string) {
-      case "specificDetails":
-        // Specific: has a number or named targets
-        covered = hasNumber || stmt.split(/\s+/).length >= 12;
-        break;
-      case "measurableCriteria":
-        // Measurable: must have a number
-        covered = hasNumber;
-        break;
-      case "achievableResources":
-        // Attainable: mentions an activity or method
-        covered = /will|through|by |via |with |using |enroll|contact|call|reach|study|practice|work|build/i.test(stmt);
-        break;
-      case "relevantAlignment":
-        // Risk: goal statement shows comfort-zone stretch — baseline + new territory
-        covered = /first time|never (done|earned|reached|achieved|before)|haven'?t|beyond (my|the)|out of (my )?comfort|new (level|record|territory|high)|push(ing)? (myself|beyond)|double|triple|from \d|increase from|exceed(ing)? (my|past)|surpass|stretch|comfort zone/i.test(stmt);
-        break;
-      case "endDate":
-        // Time-bound: must have a date
-        covered = hasDate;
-        break;
-      case "excitingMotivation":
-        // Exciting: must have emotional/identity language — not just functional
-        covered = /love|excit|passion|driven|proud|joy|dream|inspir|transform|becom|freedom|courage|legacy|family|father|mother|children|kids|husband|wife|heart|soul|purpose|always wanted|believe|worthy|fire/i.test(stmt);
-        break;
-      case "rewardingBenefits":
-        // Rewarding: must mention both tangible + emotional payoff
-        covered = /reward|earn|achiev|bonus|certif|success|win|reach|accomplish|grow|transform|celebrat|treat|gift|prize/i.test(stmt)
-          && /feel|proud|grateful|free|peace|joy|satisf|worthy|recogni|whole|confident|relief/i.test(stmt);
-        break;
-      default:
-        covered = true;
-    }
-    return { letter: f.letter, label: f.label, covered };
+    const entry = FIXES[f.key as string];
+    if (!entry) return { letter: f.letter, label: f.label, covered: true };
+    const covered = entry.pass();
+    return { letter: f.letter, label: f.label, covered, fix: covered ? undefined : entry.fix };
   });
 }
 
@@ -465,7 +466,7 @@ function Collapsible({
 // ─── Main Component ───────────────────────────────────────────────
 
 export function ActionPlannerTab({ studentId }: { studentId: string }) {
-  const { selectedGoalType, user } = useNavigation();
+  const { selectedGoalType, user, setAiCoachInitialMessage, setActiveL3Tab } = useNavigation();
   const [goals, setGoals] = useState<GoalData[]>([]);
   const [studentDeclaration, setStudentDeclaration] = useState<string | null>(null);
   const [activeGoal, setActiveGoal] = useState<string>(selectedGoalType);
@@ -498,6 +499,9 @@ export function ActionPlannerTab({ studentId }: { studentId: string }) {
   type AiImproveState = { loading: boolean; improved: string; explanation: string } | null;
   const [aiImprove, setAiImprove] = useState<Record<string, AiImproveState>>({});
 
+  // Per-field assess result: undefined = not yet assessed, null = passed, string = issue
+  const [fieldAssess, setFieldAssess] = useState<Record<string, string | null | undefined>>({});
+
   // Column 2: Milestones
   const [showQuestions, setShowQuestions] = useState(true);
   const [questions, setQuestions] = useState<MilestoneQuestions>(DEFAULT_QUESTIONS);
@@ -528,6 +532,8 @@ export function ActionPlannerTab({ studentId }: { studentId: string }) {
   const [applyingUpgrade, setApplyingUpgrade] = useState(false);
 
   const [showWheelModal, setShowWheelModal] = useState(false);
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [wheelScores, setWheelScores] = useState<Record<string, number> | undefined>(undefined);
   const [studentName, setStudentName] = useState<string>("");
 
   const canEdit =
@@ -578,7 +584,7 @@ export function ActionPlannerTab({ studentId }: { studentId: string }) {
     if (!currentGoal) return;
     const d: Record<string, string> = {};
     for (const f of SMARTER_FIELDS) d[f.key as string] = (currentGoal[f.key] as string | null) || "";
-    setSmarterDraft(d); setEditingSmarter(true); setShowBuilder(false); setTestResults(null); setSmarterOpen(true);
+    setSmarterDraft(d); setEditingSmarter(true); setShowBuilder(false); setTestResults(null); setSmarterOpen(true); setFieldAssess({});
   }
 
   async function saveSmarter() {
@@ -599,6 +605,11 @@ export function ActionPlannerTab({ studentId }: { studentId: string }) {
   }
 
   async function handleAiImprove(fieldKey: string, fieldLabel: string, issue: string, currentValue: string) {
+    const scan = scanFields({ currentValue, goalStatement: currentGoal?.goalStatement, declaration: studentDeclaration });
+    if (!scan.clean) {
+      const ok = window.confirm(`⚠️ Privacy Check\n\nFields may contain: ${scan.warnings.join(", ")}.\n\nThey will be redacted before reaching the AI.\n\nContinue?`);
+      if (!ok) return;
+    }
     setAiImprove((p) => ({ ...p, [fieldKey]: { loading: true, improved: "", explanation: "" } }));
     try {
       const result = await improveSmarterField(
@@ -785,12 +796,23 @@ export function ActionPlannerTab({ studentId }: { studentId: string }) {
 
   async function analyzeUpgrade() {
     if (!currentGoal) return;
+    const weekMilScan = currentGoal.milestones.find((m) => m.weekNumber === currentWeek);
+    const actionsScan: CheckItem[] = (() => { try { return JSON.parse(weekMilScan?.actions || "[]"); } catch { return []; } })();
+    const scan = scanFields({
+      goalStatement: currentGoal.goalStatement,
+      milestone: weekMilScan?.milestoneDescription,
+      actions: actionsScan.map((a) => a.text).join(" "),
+    });
+    if (!scan.clean) {
+      const ok = window.confirm(`⚠️ Privacy Check\n\nFields may contain: ${scan.warnings.join(", ")}.\n\nThey will be redacted before reaching the AI.\n\nContinue?`);
+      if (!ok) return;
+    }
     setUpgradeAnalyzing(true);
     setUpgradeData(null);
     setUpgradeFields([]);
     try {
-      const weekMil = currentGoal.milestones.find((m) => m.weekNumber === currentWeek);
-      const actions: CheckItem[] = (() => { try { return JSON.parse(weekMil?.actions || "[]"); } catch { return []; } })();
+      const weekMil = weekMilScan;
+      const actions: CheckItem[] = actionsScan;
       const resp = await fetch("/api/upgrade/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -847,6 +869,68 @@ export function ActionPlannerTab({ studentId }: { studentId: string }) {
     } catch (e) { console.error(e); } finally { setApplyingUpgrade(false); }
   }
 
+  // ── Template apply ────────────────────────────────────────────
+
+  function applyTemplate(template: GoalTemplate, answers: Record<string, string>) {
+    setShowTemplateModal(false);
+    // Build SMARTER draft from template
+    const s = template.smarter(answers);
+    const newSmarter: Record<string, string> = {
+      specificDetails: s.specificDetails,
+      measurableCriteria: s.measurableCriteria,
+      achievableResources: s.achievableResources,
+      relevantAlignment: s.relevantAlignment,
+      endDate: s.endDate,
+      excitingMotivation: s.excitingMotivation,
+      rewardingBenefits: s.rewardingBenefits,
+    };
+    setSmarterDraft(newSmarter);
+    setStatementDraft(generateGoalStatement(newSmarter));
+    setEditingSmarter(true);
+    setSmarterOpen(true);
+    setShowBuilder(false);
+    setTestResults(null);
+
+    // Build milestone action drafts from template weeks
+    const weeks = template.milestones(answers);
+    const newDrafts: Record<number, { description: string; actions: CheckItem[]; results: CheckItem[] }> = {};
+    for (const wk of weeks) {
+      newDrafts[wk.weekNumber] = {
+        description: wk.description,
+        actions: wk.actions.map((a) => ({ text: a.text, done: false, days: a.days })),
+        results: wk.results.map((r) => ({ text: r.text, done: false })),
+      };
+    }
+    setActionDrafts(newDrafts);
+    // Switch to the correct goal type tab
+    setActiveGoal(template.goalType);
+  }
+
+  // ── Analyze with AI ───────────────────────────────────────────
+
+  function handleAnalyzeWithAI() {
+    const draft = editingSmarter ? smarterDraft : (() => {
+      const d: Record<string, string> = {};
+      for (const f of SMARTER_FIELDS) d[f.key as string] = (currentGoal?.[f.key] as string | null) || "";
+      return d;
+    })();
+    const msg = [
+      `Please review and analyze my current SMARTER goal:`,
+      ``,
+      `**Specific:** ${draft.specificDetails || "(not filled)"}`,
+      `**Measurable:** ${draft.measurableCriteria || "(not filled)"}`,
+      `**Attainable:** ${draft.achievableResources || "(not filled)"}`,
+      `**Risk:** ${draft.relevantAlignment || "(not filled)"}`,
+      `**Time-bound:** ${draft.endDate || "(not filled)"}`,
+      `**Exciting:** ${draft.excitingMotivation || "(not filled)"}`,
+      `**Rewarding:** ${draft.rewardingBenefits || "(not filled)"}`,
+      ``,
+      `Please evaluate the quality of each field, point out any weaknesses, and suggest improvements.`,
+    ].join("\n");
+    setAiCoachInitialMessage(msg);
+    setActiveL3Tab("ai-coach");
+  }
+
   // ── Render ────────────────────────────────────────────────────
 
   if (loading) return <div className="h-96 bg-muted animate-pulse rounded-xl" />;
@@ -859,11 +943,20 @@ export function ActionPlannerTab({ studentId }: { studentId: string }) {
           studentName={studentName || "Student"}
           declaration={studentDeclaration}
           onComplete={async (scores, goalStatements) => {
+            setWheelScores(scores);
             await saveWheelGoals(studentId, scores, goalStatements);
             setShowWheelModal(false);
             load();
           }}
           onClose={() => setShowWheelModal(false)}
+        />
+      )}
+      {showTemplateModal && (
+        <GoalTemplateModal
+          goalType={activeGoal as "enrollment" | "personal" | "professional"}
+          wheelScores={wheelScores}
+          onApply={applyTemplate}
+          onClose={() => setShowTemplateModal(false)}
         />
       )}
       {/* Goal type tabs so user can navigate to the right type */}
@@ -876,28 +969,43 @@ export function ActionPlannerTab({ studentId }: { studentId: string }) {
             </button>
           ))}
         </div>
-        <button
-          onClick={() => setShowWheelModal(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full bg-muted text-muted-foreground border border-border hover:text-foreground hover:bg-muted/80 transition-colors"
-        >
-          🌀 Wheel of Life
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowTemplateModal(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full bg-primary/10 text-primary border border-primary/20 hover:bg-primary/15 transition-colors"
+          >
+            ✨ Use a Template
+          </button>
+          <button
+            onClick={() => setShowWheelModal(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full bg-muted text-muted-foreground border border-border hover:text-foreground hover:bg-muted/80 transition-colors"
+          >
+            🌀 Wheel of Life
+          </button>
+        </div>
       </div>
       <div className="bg-card rounded-xl border border-border p-12 text-center space-y-4">
         <p className="text-2xl">🎯</p>
         <p className="text-foreground font-semibold">No {activeGoal} goal set yet.</p>
         <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-          Not sure where to start? Use the Wheel of Life assessment to discover where to focus
-          — then AI will suggest personalized goals.
+          Start from a template or use the Wheel of Life assessment to discover where to focus.
         </p>
-        {goals.length === 0 && (
+        <div className="flex items-center justify-center gap-3 flex-wrap">
           <button
-            onClick={() => setShowWheelModal(true)}
+            onClick={() => setShowTemplateModal(true)}
             className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground text-sm font-semibold rounded-xl hover:bg-primary/90 transition-colors"
           >
-            <span>🌀</span> Discover My Goals with Wheel of Life
+            ✨ Use a Template
           </button>
-        )}
+          {goals.length === 0 && (
+            <button
+              onClick={() => setShowWheelModal(true)}
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-muted text-foreground text-sm font-semibold rounded-xl hover:bg-muted/80 transition-colors border border-border"
+            >
+              <span>🌀</span> Wheel of Life
+            </button>
+          )}
+        </div>
       </div>
     </>
   );
@@ -955,6 +1063,15 @@ export function ActionPlannerTab({ studentId }: { studentId: string }) {
           ))}
         </div>
         <div className="flex items-center gap-2">
+          {canEdit && (
+            <button
+              onClick={() => setShowTemplateModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full bg-primary/10 text-primary border border-primary/20 hover:bg-primary/15 transition-colors"
+              title="Load a LEAP 99 goal template"
+            >
+              ✨ Use a Template
+            </button>
+          )}
           <button
             onClick={() => setShowWheelModal(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full bg-muted text-muted-foreground border border-border hover:text-foreground hover:bg-muted/80 transition-colors"
@@ -980,11 +1097,21 @@ export function ActionPlannerTab({ studentId }: { studentId: string }) {
           studentName={studentName || "Student"}
           declaration={studentDeclaration}
           onComplete={async (scores, goalStatements) => {
+            setWheelScores(scores);
             await saveWheelGoals(studentId, scores, goalStatements);
             setShowWheelModal(false);
             load();
           }}
           onClose={() => setShowWheelModal(false)}
+        />
+      )}
+      {/* Template modal */}
+      {showTemplateModal && (
+        <GoalTemplateModal
+          goalType={activeGoal as "enrollment" | "personal" | "professional"}
+          wheelScores={wheelScores}
+          onApply={applyTemplate}
+          onClose={() => setShowTemplateModal(false)}
         />
       )}
 
@@ -1119,6 +1246,11 @@ export function ActionPlannerTab({ studentId }: { studentId: string }) {
             action={studentDeclaration && currentGoal.goalStatement ? (
               <button
                 onClick={async () => {
+                  const scan = scanFields({ goalStatement: currentGoal.goalStatement, declaration: studentDeclaration, values: currentGoal.valuesDeclaration });
+                  if (!scan.clean) {
+                    const ok = window.confirm(`⚠️ Privacy Check\n\nFields may contain: ${scan.warnings.join(", ")}.\n\nThey will be redacted before reaching the AI.\n\nContinue?`);
+                    if (!ok) return;
+                  }
                   setDeclFitLoading(true);
                   setDeclFitResult(null);
                   setDeclFitError(null);
@@ -1275,62 +1407,114 @@ export function ActionPlannerTab({ studentId }: { studentId: string }) {
                                 value={smarterDraft[c.key as string] || ""}
                                 onChange={(e) => {
                                   setSmarterDraft((p) => ({ ...p, [c.key as string]: e.target.value }));
-                                  // Clear AI suggestion when user types
+                                  // Clear AI suggestion + assess result when user types
                                   if (ai) setAiImprove((p) => ({ ...p, [c.key as string]: null }));
+                                  setFieldAssess((p) => ({ ...p, [c.key as string]: undefined }));
                                 }}
                                 rows={c.minWords >= 10 ? 3 : 2}
                                 placeholder={c.placeholder}
                                 className="w-full text-xs border border-border rounded px-2 py-1 bg-background resize-none focus:outline-none focus:ring-1 focus:ring-primary"
                               />
 
-                              {/* Live: hint + suggestion + AI rewrite button */}
-                              {qualityHint ? (
-                                <div className="space-y-1.5 rounded-lg bg-yellow-500/5 border border-yellow-500/20 px-2.5 py-2">
-                                  <p className="text-[11px] text-yellow-600 dark:text-yellow-400 leading-relaxed font-medium">⚡ {qualityHint}</p>
-                                  <p className="text-[11px] text-muted-foreground leading-relaxed">💡 {c.suggestion}</p>
-                                  {!ai && (
-                                    <button
-                                      onClick={() => handleAiImprove(c.key as string, c.label, qualityHint, smarterDraft[c.key as string] || "")}
-                                      className="flex items-center gap-1 text-[11px] px-2 py-0.5 rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors font-medium"
-                                    >
-                                      <Sparkles className="h-2.5 w-2.5" /> AI Rewrite
-                                    </button>
-                                  )}
-                                  {ai?.loading && (
-                                    <p className="text-[11px] text-primary/70 animate-pulse">✨ Generating improved version…</p>
-                                  )}
-                                  {ai && !ai.loading && ai.improved && (
-                                    <div className="space-y-1 pt-1 border-t border-yellow-500/20">
-                                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">AI suggests:</p>
-                                      <p className="text-[11px] text-foreground/90 leading-relaxed italic">"{ai.improved}"</p>
-                                      {ai.explanation && (
-                                        <p className="text-[10px] text-muted-foreground">{ai.explanation}</p>
-                                      )}
-                                      <div className="flex gap-1.5 pt-0.5">
-                                        <button
-                                          onClick={() => {
-                                            setSmarterDraft((p) => ({ ...p, [c.key as string]: ai.improved }));
-                                            setAiImprove((p) => ({ ...p, [c.key as string]: null }));
-                                          }}
-                                          className="text-[11px] px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-600 hover:bg-emerald-500/25 transition-colors font-medium"
-                                        >
-                                          Use this ↑
-                                        </button>
-                                        <button
-                                          onClick={() => setAiImprove((p) => ({ ...p, [c.key as string]: null }))}
-                                          className="text-[11px] px-2 py-0.5 rounded bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"
-                                        >
-                                          Dismiss
-                                        </button>
+                              {/* Assess button — evaluates DRAFT text, not saved text */}
+                              {(() => {
+                                const draftVal = (smarterDraft[c.key as string] || "").trim();
+                                const assessed = fieldAssess[c.key as string];
+                                const draftIssue = assessed !== undefined
+                                  ? assessed  // already assessed
+                                  : qualityHint; // fall back to saved-value hint
+
+                                return (
+                                  <div className="space-y-1.5">
+                                    {/* Assess button — always shown when there's draft text */}
+                                    {draftVal && (
+                                      <button
+                                        onClick={() => {
+                                          const issue = checkSmarterFieldQuality(c.key as string, draftVal);
+                                          setFieldAssess((p) => ({ ...p, [c.key as string]: issue ?? null }));
+                                        }}
+                                        className="flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors font-semibold border border-primary/20"
+                                      >
+                                        ✦ Assess
+                                      </button>
+                                    )}
+
+                                    {/* Result: pass or issue */}
+                                    {assessed !== undefined && (
+                                      assessed === null ? (
+                                        <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">✓ Passes SMARTER check for {c.label}</p>
+                                      ) : (
+                                        <div className="space-y-1.5 rounded-lg bg-yellow-500/5 border border-yellow-500/20 px-2.5 py-2">
+                                          <p className="text-[11px] text-yellow-600 dark:text-yellow-400 leading-relaxed font-medium">⚡ {assessed}</p>
+                                          <p className="text-[11px] text-muted-foreground leading-relaxed">💡 {c.suggestion}</p>
+                                          {!ai && (
+                                            <button
+                                              onClick={() => handleAiImprove(c.key as string, c.label, assessed, draftVal)}
+                                              className="flex items-center gap-1 text-[11px] px-2 py-0.5 rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors font-medium"
+                                            >
+                                              <Sparkles className="h-2.5 w-2.5" /> AI Rewrite
+                                            </button>
+                                          )}
+                                        </div>
+                                      )
+                                    )}
+
+                                    {/* Show saved-value hint only if not yet assessed */}
+                                    {assessed === undefined && draftIssue && (
+                                      <div className="space-y-1.5 rounded-lg bg-yellow-500/5 border border-yellow-500/20 px-2.5 py-2">
+                                        <p className="text-[11px] text-yellow-600 dark:text-yellow-400 leading-relaxed font-medium">⚡ {draftIssue}</p>
+                                        <p className="text-[11px] text-muted-foreground leading-relaxed">💡 {c.suggestion}</p>
+                                        {!ai && (
+                                          <button
+                                            onClick={() => handleAiImprove(c.key as string, c.label, draftIssue, smarterDraft[c.key as string] || "")}
+                                            className="flex items-center gap-1 text-[11px] px-2 py-0.5 rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors font-medium"
+                                          >
+                                            <Sparkles className="h-2.5 w-2.5" /> AI Rewrite
+                                          </button>
+                                        )}
                                       </div>
-                                    </div>
-                                  )}
-                                </div>
-                              ) : filled ? (
-                                <p className="text-[11px] text-emerald-600 dark:text-emerald-500">✓ Looks good</p>
-                              ) : (
-                                <p className="text-[11px] text-muted-foreground leading-relaxed">💡 {c.suggestion}</p>
-                              )}
+                                    )}
+                                    {assessed === undefined && !draftIssue && filled && (
+                                      <p className="text-[11px] text-emerald-600 dark:text-emerald-500">✓ Looks good</p>
+                                    )}
+                                    {assessed === undefined && !filled && (
+                                      <p className="text-[11px] text-muted-foreground leading-relaxed">💡 {c.suggestion}</p>
+                                    )}
+
+                                    {/* AI suggestion block */}
+                                    {ai?.loading && (
+                                      <p className="text-[11px] text-primary/70 animate-pulse">✨ Generating improved version…</p>
+                                    )}
+                                    {ai && !ai.loading && ai.improved && (
+                                      <div className="space-y-1 pt-1 border-t border-yellow-500/20">
+                                        <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">AI suggests:</p>
+                                        <p className="text-[11px] text-foreground/90 leading-relaxed italic">"{ai.improved}"</p>
+                                        {ai.explanation && (
+                                          <p className="text-[10px] text-muted-foreground">{ai.explanation}</p>
+                                        )}
+                                        <div className="flex gap-1.5 pt-0.5">
+                                          <button
+                                            onClick={() => {
+                                              setSmarterDraft((p) => ({ ...p, [c.key as string]: ai.improved }));
+                                              setAiImprove((p) => ({ ...p, [c.key as string]: null }));
+                                              setFieldAssess((p) => ({ ...p, [c.key as string]: undefined }));
+                                            }}
+                                            className="text-[11px] px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-600 hover:bg-emerald-500/25 transition-colors font-medium"
+                                          >
+                                            Use this ↑
+                                          </button>
+                                          <button
+                                            onClick={() => setAiImprove((p) => ({ ...p, [c.key as string]: null }))}
+                                            className="text-[11px] px-2 py-0.5 rounded bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"
+                                          >
+                                            Dismiss
+                                          </button>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })()}
                             </div>
 
                           ) : filled ? (
@@ -1398,8 +1582,14 @@ export function ActionPlannerTab({ studentId }: { studentId: string }) {
                 <FlaskConical className="h-3 w-3" /> Test SMARTER Coverage
               </button>
               {testResults && (
-                <div className="rounded-lg border border-border p-3 space-y-2">
-                  <p className="text-xs font-semibold text-muted-foreground">{passedTests}/{totalApplicable} criteria reflected</p>
+                <div className="rounded-lg border border-border p-3 space-y-2.5">
+                  {/* Score summary + badges */}
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold text-muted-foreground">{passedTests}/{totalApplicable} criteria reflected</p>
+                    {passedTests === totalApplicable && totalApplicable > 0 && (
+                      <span className="text-[11px] font-bold text-emerald-600 bg-emerald-500/10 px-2 py-0.5 rounded-full">✓ All criteria met!</span>
+                    )}
+                  </div>
                   <div className="flex flex-wrap gap-1.5">
                     {testResults.map((r, i) => (
                       <span key={i} className={`text-xs px-2 py-0.5 rounded-full font-medium ${r.covered === null ? "bg-muted text-muted-foreground" : r.covered ? "bg-emerald-500/15 text-emerald-600" : "bg-red-500/15 text-red-500"}`}>
@@ -1407,17 +1597,36 @@ export function ActionPlannerTab({ studentId }: { studentId: string }) {
                       </span>
                     ))}
                   </div>
+                  {/* Per-criterion fix suggestions for failing ones */}
                   {testResults.some((r) => r.covered === false) && (
-                    <p className="text-xs text-amber-700 dark:text-amber-400">Some criteria not reflected — revise above.</p>
+                    <div className="space-y-1.5 pt-1 border-t border-border">
+                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">How to fix:</p>
+                      {testResults.filter((r) => r.covered === false && r.fix).map((r, i) => (
+                        <div key={i} className="flex gap-2 items-start">
+                          <span className="shrink-0 mt-0.5 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold bg-red-500/15 text-red-500">{r.letter}</span>
+                          <div>
+                            <p className="text-[11px] font-semibold text-foreground/80">{r.label}</p>
+                            <p className="text-[11px] text-muted-foreground leading-relaxed">{r.fix}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </div>
               )}
               {canEdit && (
-                <div className="flex gap-2 pt-1 border-t border-border">
+                <div className="flex gap-2 pt-1 border-t border-border flex-wrap">
                   <button onClick={copyToGoalStatement} disabled={savingToGoal || !statementDraft.trim()} className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors flex-1 justify-center">
                     <ArrowRight className="h-3 w-3" />{savingToGoal ? "Exporting…" : "✓ Export to Results"}
                   </button>
                   <button onClick={() => { setStatementDraft(currentGoal.goalStatement || ""); setTestResults(null); }} className="text-xs px-3 py-1.5 rounded-lg bg-muted text-muted-foreground transition-colors">Reset</button>
+                  <button
+                    onClick={handleAnalyzeWithAI}
+                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-primary/30 text-primary hover:bg-primary/5 transition-colors w-full justify-center mt-1"
+                  >
+                    <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-primary/15 text-primary text-[8px] font-bold">AI</span>
+                    Analyze with AI Coach
+                  </button>
                 </div>
               )}
             </div>

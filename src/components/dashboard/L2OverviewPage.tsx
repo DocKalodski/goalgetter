@@ -13,7 +13,12 @@ import {
   GraduationCap,
   Crown,
   Settings2,
+  Headphones,
+  Shield,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
+import { BetaPill } from "@/components/ui/UpgradeModuleBanner";
 
 
 interface CoachMetrics {
@@ -56,13 +61,14 @@ export function L2OverviewPage() {
     setCurrentPage,
     setSelectedCouncilId,
     setL1SubView,
+    l1ManageOpen,
+    setL1ManageOpen,
     user,
   } = useNavigation();
   const [metrics, setMetrics] = useState<CoachMetrics | null>(null);
   const [councils, setCouncils] = useState<CouncilStat[]>([]);
   const [weeklyHistory, setWeeklyHistory] = useState<WeekHistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showManage, setShowManage] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -124,13 +130,14 @@ export function L2OverviewPage() {
           </div>
           {isHeadCoach && (
             <button
-              onClick={() => setShowManage((v) => !v)}
+              onClick={() => setL1ManageOpen(!l1ManageOpen)}
               className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors ${
-                showManage ? "bg-primary text-primary-foreground" : "bg-primary/10 text-primary hover:bg-primary/20"
+                l1ManageOpen ? "bg-primary text-primary-foreground" : "bg-primary/10 text-primary hover:bg-primary/20"
               }`}
             >
               <Settings2 className="h-4 w-4" />
-              Manage Program
+              Manage
+              {l1ManageOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
             </button>
           )}
         </div>
@@ -156,13 +163,36 @@ export function L2OverviewPage() {
         </div>
       </div>
 
-      {/* Unified management shell */}
-      {isHeadCoach && showManage && metrics && (
-        <ManageProgramShell
-          batchId={metrics.batchId}
-          onClose={() => setShowManage(false)}
-          onChanged={load}
-        />
+      {/* HC Manage Panel */}
+      {isHeadCoach && l1ManageOpen && (
+        <div className="bg-card border border-border rounded-xl p-4 space-y-4">
+          {metrics && (
+            <ManageProgramShell
+              batchId={metrics.batchId}
+              onClose={() => setL1ManageOpen(false)}
+              onChanged={load}
+            />
+          )}
+          <div>
+            <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-3">HC Tools</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              <button
+                onClick={() => { setL1ManageOpen(false); setL1SubView("eavesdrop"); }}
+                className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-border bg-muted/30 hover:bg-muted hover:border-purple-400/40 transition-colors text-left"
+              >
+                <Headphones className="h-4 w-4 text-purple-400 shrink-0" />
+                <span className="text-sm font-medium">Eavesdrop AI</span><BetaPill />
+              </button>
+              <button
+                onClick={() => { setL1ManageOpen(false); setL1SubView("security"); }}
+                className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-border bg-muted/30 hover:bg-muted hover:border-blue-400/40 transition-colors text-left"
+              >
+                <Shield className="h-4 w-4 text-blue-400 shrink-0" />
+                <span className="text-sm font-medium">Security</span><BetaPill />
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Full-width Performance Banner with breakdown */}

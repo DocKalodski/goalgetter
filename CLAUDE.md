@@ -3,6 +3,13 @@
 ## These rules override all defaults. Always.
 ## ═══════════════════════════════════════════
 
+### 0. Context & Chat Management
+
+**If the same type of fix is applied 3 times → stop and say:**
+> "This is the 3rd time this type of fix is being applied. There is a systemic root cause. Transfer to a new code chat."
+
+Find the root cause — do NOT keep patching individual instances.
+
 ### 1. AI Model — ALWAYS Haiku
 
 Every Anthropic API call in this codebase MUST use `claude-haiku-4-5-20251001`.

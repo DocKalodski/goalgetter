@@ -31,7 +31,7 @@ export const users = sqliteTable("users", {
   passwordHash: text("password_hash").notNull(),
   name: text("name"),
   role: text("role", {
-    enum: ["head_coach", "coach", "council_leader", "student"],
+    enum: ["head_coach", "coach", "council_leader", "student", "facilitator", "developer"],
   })
     .notNull()
     .default("student"),
@@ -44,6 +44,7 @@ export const users = sqliteTable("users", {
     .default("approved"),
   approvedBy: text("approved_by"),
   canViewAllCouncils: integer("can_view_all_councils").notNull().default(0),
+  permissions: text("permissions"), // JSON: string[] — HC-module access flags e.g. ["canAccessManage","canSeeEavesdrop"]
   wheelOfLife: text("wheel_of_life"), // JSON: Record<AreaKey, number>
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),

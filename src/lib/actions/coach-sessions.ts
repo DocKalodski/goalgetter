@@ -2,13 +2,14 @@
 
 import { db } from "@/lib/db";
 import { coachSessions, coachDocuments, users } from "@/lib/db/schema";
-import { getAuthUser, isHeadCoach,
-} from "@/lib/auth/jwt";
+import { getAuthUser, isHeadCoach } from "@/lib/auth/jwt";
+import { canAccessStudent } from "@/lib/auth/access";
 import { eq, and, isNull, isNotNull, desc } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
 import { createId } from "@paralleldrive/cuid2";
-import Anthropic from "@anthropic-ai/sdk";
+import { llmChat } from "@/lib/llm";
 import { createNotification } from "@/lib/actions/notifications";
+import { nerRedact, sanitizePII, PRIVACY_CLAUSE } from "@/lib/utils/sanitize-pii";
 
 function requireCoach() {
   return getAuthUser().then((user) => {
@@ -88,6 +89,18 @@ export async function getGeneralSessions() {
   return rows.reverse();
 }
 
+// Scrub [Name]: speaker tags → [Coach]: / [Student]: for privacy before sending to LLM
+function anonymizeTranscript(transcript: string): string {
+  let coachTagged = false;
+  const studentLabel = "[Student]:";
+  return transcript.replace(/\[([^\]]+)\]:/g, (_, name) => {
+    const lower = name.trim().toLowerCase();
+    if (lower === "coach" || lower === "head coach" || lower === "hc") return "[Coach]:";
+    if (!coachTagged) { coachTagged = true; return "[Coach]:"; }
+    return studentLabel;
+  });
+}
+
 export async function generateSessionSummary(sessionId: string) {
   const user = await requireCoach();
   const [session] = await db
@@ -98,38 +111,27 @@ export async function generateSessionSummary(sessionId: string) {
   if (!session) throw new Error("Session not found");
   if (!session.transcript) throw new Error("No transcript to summarize");
 
-  let studentName = "the student";
-  if (session.studentId) {
-    const [student] = await db
-      .select({ name: users.name, email: users.email })
-      .from(users)
-      .where(eq(users.id, session.studentId));
-    studentName = student?.name?.split(" ")[0] ?? student?.email ?? "the student";
-  }
-
-  const client = new Anthropic();
+  // Anonymize speaker tags, then NER-redact any remaining names/orgs in the transcript body
+  const safeTranscript = await nerRedact(anonymizeTranscript(session.transcript));
 
   let prompt: string;
   if (session.destination === "general") {
-    prompt = `Analyze these coaching notes for methodology insights.
+    prompt = `${PRIVACY_CLAUSE}
+
+Analyze these coaching notes for methodology insights.
 Context: LEAP 99 program, GROW + SMARTER framework.
-Notes: "${session.transcript}"
+Notes: "${safeTranscript}"
 Return ONLY valid JSON: {"summary":"...","keyInsights":["..."],"methodologyNotes":["..."],"applicableTo":["..."]}`;
   } else {
-    prompt = `Analyze this ${session.sessionType} coaching session using GROW framework and SMARTER goals methodology.
-Student: ${studentName}. Week ${session.weekNumber}.
-The transcript uses [Name]: tags to indicate who is speaking. Generate insights for ${studentName} specifically.
-Transcript: "${session.transcript}"
+    prompt = `${PRIVACY_CLAUSE}
+
+Analyze this ${session.sessionType} coaching session using GROW framework and SMARTER goals methodology.
+Week ${session.weekNumber}. Speakers are labeled [Coach] and [Student].
+Transcript: "${safeTranscript}"
 Return ONLY valid JSON: {"summary":"...","keyPoints":["..."],"actionItems":["..."],"growAlignment":{"goal":"...","reality":"...","options":["..."],"wayForward":"..."},"sentiment":"positive","coachingTone":"...","studentEngagement":"high"}`;
   }
 
-  const message = await client.messages.create({
-    model: "claude-haiku-4-5-20251001",
-    max_tokens: 1024,
-    messages: [{ role: "user", content: prompt }],
-  });
-
-  const raw = message.content[0].type === "text" ? message.content[0].text : "";
+  const raw = await llmChat([{ role: "user", content: prompt }], { tier: "smart", maxTokens: 1024 });
   const match = raw.match(/\{[\s\S]*\}/);
   const aiSummary = match ? match[0] : JSON.stringify({ summary: raw, keyPoints: [], actionItems: [] });
 
@@ -185,8 +187,7 @@ export async function publishSessionDocument(
 export async function getStudentDocuments(studentId: string) {
   const user = await getAuthUser();
   if (!user) throw new Error("Unauthorized");
-  // Students can only fetch their own; coaches can fetch any
-  if (user.role === "student" && user.userId !== studentId) {
+  if (!(await canAccessStudent(user, studentId))) {
     throw new Error("Forbidden");
   }
   const rows = await db
@@ -257,11 +258,13 @@ export async function flagSessionForHC(sessionId: string) {
 
   if (!session || !session.aiSummary) return null;
 
-  const client = new Anthropic();
-  const prompt = `You are the head coach reviewing a coaching session AI summary.
+  const safeSummary = await nerRedact(session.aiSummary);
+  const prompt = `${PRIVACY_CLAUSE}
+
+You are the head coach reviewing a coaching session AI summary.
 Classify this session and write a one-sentence HC takeaway.
 
-Session summary: ${session.aiSummary}
+Session summary: ${safeSummary}
 
 Respond ONLY with valid JSON: {"flag": "needs_attention"|"at_risk"|"great_progress"|"routine", "oneLiner": "max 25 word sentence for HC"}
 
@@ -271,13 +274,7 @@ Rules:
 - great_progress: breakthrough moment, student excelling, celebrate
 - routine: normal session, no concerns`;
 
-  const message = await client.messages.create({
-    model: "claude-haiku-4-5-20251001",
-    max_tokens: 256,
-    messages: [{ role: "user", content: prompt }],
-  });
-
-  const raw = message.content[0].type === "text" ? message.content[0].text : "";
+  const raw = await llmChat([{ role: "user", content: prompt }], { tier: "fast", maxTokens: 256 });
   const match = raw.match(/\{[\s\S]*\}/);
   if (!match) return null;
 

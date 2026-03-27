@@ -155,6 +155,50 @@ export function ManageProgramPanel({ initialOpenSection }: { initialOpenSection?
     setSettings((s) => s ? { ...s, weeklyTargets: targets } : s);
   }
 
+  function loadLeap99Preset() {
+    setSettings((s) => {
+      if (!s) return s;
+      return {
+        ...s,
+        startDate: "2026-04-27",
+        endDate: "2026-06-21",
+        totalWeeks: 8,
+        intensiveDates: [
+          "2026-04-25","2026-04-26",
+          "2026-05-23","2026-05-24",
+          "2026-06-20","2026-06-21",
+        ],
+        breakfastDates: [
+          "2026-05-09","2026-05-10",
+          "2026-05-16","2026-05-17",
+          "2026-06-05","2026-06-06","2026-06-07",
+          "2026-06-12","2026-06-13","2026-06-14",
+        ],
+        events: [
+          { id: "int1",        name: "1st Intensive — UP BGC",              date: "2026-04-25" },
+          { id: "int1b",       name: "1st Intensive Day 2 — UP BGC",        date: "2026-04-26" },
+          { id: "int2",        name: "2nd Intensive — UP BGC",              date: "2026-05-23" },
+          { id: "int2b",       name: "2nd Intensive Day 2 — UP BGC",        date: "2026-05-24" },
+          { id: "int3",        name: "3rd Intensive — TBA",                 date: "2026-06-20" },
+          { id: "int3b",       name: "3rd Intensive Day 2 — TBA",           date: "2026-06-21" },
+          { id: "w3-workshop", name: "1st Workshop — SMX Aura",             date: "2026-05-17" },
+          { id: "w7-workshop", name: "2nd Workshop + AckNight — SMX Aura",  date: "2026-06-14" },
+          { id: "post-debrief",name: "De-brief with Facis",                 date: "2026-06-22" },
+        ],
+        weeklyTargets: {
+          "1": { min: 0,  max: 0   },
+          "2": { min: 10, max: 19  },
+          "3": { min: 20, max: 34  },
+          "4": { min: 35, max: 54  },
+          "5": { min: 55, max: 74  },
+          "6": { min: 75, max: 94  },
+          "7": { min: 80, max: 94  },
+          "8": { min: 95, max: 100 },
+        },
+      };
+    });
+  }
+
   async function handleSave() {
     if (!settings) return;
     setSaving(true);
@@ -235,6 +279,23 @@ export function ManageProgramPanel({ initialOpenSection }: { initialOpenSection?
           {error}
         </div>
       )}
+
+      {/* ── LEAP 99 Preset ── */}
+      <div className="flex items-center justify-between px-3 py-2.5 mb-3 rounded-lg bg-primary/5 border border-primary/20">
+        <div className="flex items-center gap-2">
+          <Wand2 className="h-4 w-4 text-primary" />
+          <span className="text-sm font-medium text-foreground">LEAP 99 Official Schedule</span>
+          <span className="text-xs text-muted-foreground hidden sm:inline">Apr 25 – Jun 22, 2026 · 8 weeks · UP BGC + SMX Aura</span>
+        </div>
+        <button
+          type="button"
+          onClick={loadLeap99Preset}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shrink-0"
+        >
+          <Star className="h-3.5 w-3.5" />
+          Load LEAP 99 Official Schedule
+        </button>
+      </div>
 
       {/* ── Section 1: Program Structure ── */}
       <div className="border-t border-border">

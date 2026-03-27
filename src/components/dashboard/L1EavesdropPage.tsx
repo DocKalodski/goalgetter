@@ -1,8 +1,11 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { Headphones, Bell, BellOff, Loader2, MessageSquare, X, ChevronDown, ChevronUp } from "lucide-react";
+import { Headphones, Bell, BellOff, Loader2, MessageSquare, X, ChevronDown, ChevronUp, ArrowLeft } from "lucide-react";
+import { scanForPII } from "@/lib/utils/pii-scan";
+import { UpgradeModuleBanner } from "@/components/ui/UpgradeModuleBanner";
 import { getAllCoachSessionsForHC, flagSessionForHC } from "@/lib/actions/coach-sessions";
+import { useNavigation } from "@/components/layout/DashboardShell";
 
 type HCFlag = "needs_attention" | "at_risk" | "great_progress" | "routine";
 
@@ -122,8 +125,15 @@ function SessionCard({
     try { return JSON.parse(session.aiSummary); } catch { return null; }
   })();
 
-  async function sendMessage(text: string) {
+  async function sendMessage(text: string, bypassScan = false) {
     if (!text.trim() || streaming) return;
+    if (!bypassScan) {
+      const scan = scanForPII(text.trim());
+      if (!scan.clean) {
+        const ok = window.confirm(`⚠️ Privacy Check\n\nMessage may contain: ${scan.warnings.join(", ")}.\n\nIt will be automatically redacted before reaching the AI.\n\nSend anyway?`);
+        if (!ok) return;
+      }
+    }
     setInput("");
 
     const sessionContext = `[HC Intelligence Context — Coach: ${session.coachName ?? "Unknown"}, Student: ${session.studentName ?? "General"}, Week ${session.weekNumber}, Type: ${session.sessionType}]\n\nAI Summary: ${session.aiSummary ?? "No summary available"}`;
@@ -232,7 +242,7 @@ function SessionCard({
               {STARTER_PROMPTS.map((p) => (
                 <button
                   key={p}
-                  onClick={() => sendMessage(p)}
+                  onClick={() => sendMessage(p, true)}
                   className="text-xs px-3 py-1.5 rounded-full bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors"
                 >
                   {p}
@@ -281,6 +291,7 @@ function SessionCard({
 }
 
 export function L1EavesdropPage() {
+  const { setL1SubView, setL1ManageOpen } = useNavigation();
   const [sessions, setSessions] = useState<HCSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState("all");
@@ -304,9 +315,13 @@ export function L1EavesdropPage() {
 
   return (
     <div className="space-y-6 p-4 md:p-6">
+      <UpgradeModuleBanner />
       {/* Header */}
       <div>
-        <div className="flex items-center gap-2 mb-1">
+        <div className="flex items-center gap-3 mb-1">
+          <button type="button" onClick={() => { setL1SubView("overview"); setL1ManageOpen(true); }} className="p-2 rounded-lg hover:bg-muted transition-colors">
+            <ArrowLeft className="h-5 w-5" />
+          </button>
           <Headphones className="h-6 w-6 text-primary" />
           <h1 className="text-2xl font-bold">Coaching Intelligence Feed</h1>
         </div>

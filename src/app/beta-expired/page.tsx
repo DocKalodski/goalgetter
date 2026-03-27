@@ -10,7 +10,7 @@ export default function BetaExpiredPage() {
           This beta preview expired on
         </p>
         <p className="text-slate-300 font-semibold mb-6">
-          Monday, March 23, 2026 · 9:00 PM
+          Monday, March 23, 2026 · 11:00 PM
         </p>
         <p className="text-slate-500 text-sm leading-relaxed mb-8">
           Beta testing window has closed.<br />

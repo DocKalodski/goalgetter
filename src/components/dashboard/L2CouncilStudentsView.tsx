@@ -8,7 +8,6 @@ import { updateDeclarationForStudent } from "@/lib/actions/alignment";
 import { ArrowLeft, UserPlus, Pencil, Check, X, Search, Trash2 } from "lucide-react";
 import { AddStudentPanel } from "./AddStudentPanel";
 import { PerformanceBanner } from "./PerformanceBanner";
-import { AtRiskPanel } from "./AtRiskPanel";
 import { WeeklyReportPanel } from "./WeeklyReportPanel";
 import { BatchPPScorecard } from "./BatchPPScorecard";
 import { AssignExistingPanel } from "./AssignExistingPanel";
@@ -499,15 +498,6 @@ export function L2CouncilStudentsView() {
         />
       )}
 
-      {/* At-Risk Panel — coaches only */}
-      {(user.role === "coach" || user.role === "head_coach") && !loading && (
-        <AtRiskPanel
-          students={students}
-          currentWeek={weekInfo.currentWeek}
-          weeklyTargets={weekInfo.weeklyTargets}
-          onStudentClick={(id) => { setSelectedStudentId(id); setCurrentPage("L3"); }}
-        />
-      )}
 
     </div>
   );

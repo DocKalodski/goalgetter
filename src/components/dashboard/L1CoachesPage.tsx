@@ -40,7 +40,7 @@ interface CoachDetail {
 }
 
 export function L1CoachesPage() {
-  const { setL1SubView } = useNavigation();
+  const { setL1SubView, setL1ManageOpen } = useNavigation();
   const [coaches, setCoaches] = useState<CoachDetail[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -133,7 +133,7 @@ export function L1CoachesPage() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => setL1SubView("overview")}
+            onClick={() => { setL1SubView("overview"); setL1ManageOpen(true); }}
             className="p-2 rounded-lg hover:bg-muted transition-colors"
           >
             <ArrowLeft className="h-5 w-5" />

@@ -2,8 +2,8 @@
 
 import { db } from "@/lib/db";
 import { goals, weeklyMilestones, councils, users } from "@/lib/db/schema";
-import { getAuthUser, isHeadCoach,
-} from "@/lib/auth/jwt";
+import { getAuthUser, isHeadCoach } from "@/lib/auth/jwt";
+import { canAccessStudent } from "@/lib/auth/access";
 import { eq, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { createId } from "@paralleldrive/cuid2";
@@ -59,6 +59,10 @@ export async function getMyGoals() {
 export async function getStudentGoals(studentId: string) {
   const user = await getAuthUser();
   if (!user) throw new Error("Unauthorized");
+
+  if (!(await canAccessStudent(user, studentId))) {
+    throw new Error("Forbidden");
+  }
 
   const studentGoals = await db
     .select()

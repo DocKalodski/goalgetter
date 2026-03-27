@@ -24,7 +24,7 @@ interface StudentDetail {
 type SortField = "name" | "avg";
 
 export function L1StudentsPage() {
-  const { setL1SubView, setCurrentPage, setSelectedStudentId, setActiveL3Tab } =
+  const { setL1SubView, setL1ManageOpen, setCurrentPage, setSelectedStudentId, setActiveL3Tab } =
     useNavigation();
   const [students, setStudents] = useState<StudentDetail[]>([]);
   const [loading, setLoading] = useState(true);
@@ -99,7 +99,7 @@ export function L1StudentsPage() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => setL1SubView("overview")}
+            onClick={() => { setL1SubView("overview"); setL1ManageOpen(true); }}
             className="p-2 rounded-lg hover:bg-muted transition-colors"
           >
             <ArrowLeft className="h-5 w-5" />

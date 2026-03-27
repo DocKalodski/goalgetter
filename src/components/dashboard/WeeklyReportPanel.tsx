@@ -33,6 +33,14 @@ type ReportData = {
   motivationalNote: string;
 };
 
+// Map "Student N" label back to the real student using the order they were sent to the LLM
+function resolveStudent(label: string, students: WeeklyReportPanelProps["students"]) {
+  const match = label.match(/Student\s+(\d+)/i);
+  if (!match) return null;
+  const idx = parseInt(match[1], 10) - 1;
+  return students[idx] ?? null;
+}
+
 const healthConfig: Record<ReportData["overallHealth"], { label: string; className: string }> = {
   excellent: { label: "Excellent", className: "bg-green-100 text-green-800 border-green-200" },
   good: { label: "Good", className: "bg-blue-100 text-blue-800 border-blue-200" },
@@ -144,12 +152,18 @@ export function WeeklyReportPanel({
             <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2.5">⭐ Top Performers</h4>
             {report.topPerformers.length > 0 ? (
               <div className="flex flex-wrap gap-2">
-                {report.topPerformers.map((p, i) => (
-                  <div key={i} className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-xs">
-                    <span className="font-semibold text-green-800">{p.name}</span>
-                    <span className="text-green-700 ml-1">— {p.highlight}</span>
-                  </div>
-                ))}
+                {report.topPerformers.map((p, i) => {
+                  const real = resolveStudent(p.name, students);
+                  return (
+                    <div key={i} className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-xs">
+                      <span className="font-semibold text-green-800">
+                        {real ? real.name ?? real.email : p.name}
+                      </span>
+                      {real && <span className="text-green-500 ml-1 font-normal">({p.name})</span>}
+                      <span className="text-green-700 ml-1">— {p.highlight}</span>
+                    </div>
+                  );
+                })}
               </div>
             ) : (
               <p className="text-xs text-muted-foreground italic">No top performers identified this week.</p>
@@ -161,18 +175,17 @@ export function WeeklyReportPanel({
             {report.studentsNeedingSupport.length > 0 ? (
               <div className="space-y-2">
                 {report.studentsNeedingSupport.map((s, i) => {
-                  const student = students.find(
-                    (st) =>
-                      (st.name ?? st.email).toLowerCase().includes(s.name.toLowerCase()) ||
-                      s.name.toLowerCase().includes((st.name ?? "").toLowerCase())
-                  );
+                  const real = resolveStudent(s.name, students);
                   return (
                     <div
                       key={i}
                       className="bg-orange-50 border border-orange-200 rounded-lg px-3 py-2.5 text-xs cursor-pointer hover:bg-orange-100 transition-colors"
-                      onClick={() => student && onStudentClick(student.id)}
+                      onClick={() => real && onStudentClick(real.id)}
                     >
-                      <p className="font-semibold text-orange-800">{s.name}</p>
+                      <p className="font-semibold text-orange-800">
+                        {real ? real.name ?? real.email : s.name}
+                        {real && <span className="text-orange-400 font-normal ml-1">({s.name})</span>}
+                      </p>
                       <p className="text-orange-700 mt-0.5">{s.concern}</p>
                       <p className="text-orange-600 mt-1 italic">→ {s.suggestedAction}</p>
                     </div>

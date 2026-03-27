@@ -164,10 +164,16 @@ export async function login(formData: FormData) {
     maxAge: 60 * 60 * 24 * 7,
   });
 
+  let permissions: string[] | undefined;
+  if (user.permissions) {
+    try { permissions = JSON.parse(user.permissions); } catch { /* invalid JSON — ignore */ }
+  }
+
   const payload: JWTPayload = {
     userId: user.id,
     role: user.role as JWTPayload["role"],
     canViewAllCouncils: user.canViewAllCouncils === 1,
+    ...(permissions?.length ? { permissions } : {}),
   };
 
   const accessToken = await createAccessToken(payload);

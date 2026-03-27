@@ -1,9 +1,8 @@
 "use server";
 
-import Anthropic from "@anthropic-ai/sdk";
+import { llmChat } from "@/lib/llm";
 import { getAuthUser } from "@/lib/auth/jwt";
-
-const client = new Anthropic();
+import { PRIVACY_CLAUSE } from "@/lib/utils/sanitize-pii";
 
 export async function generateWeeklyReport(data: {
   councilName: string;
@@ -28,13 +27,16 @@ export async function generateWeeklyReport(data: {
 
   const { councilName, weekNumber, students } = data;
 
-  const prompt = `You are a LEAP 99 coaching program analyst. Generate a weekly coaching report for Week ${weekNumber} of council "${councilName}".
+  // Replace real names/emails with indexed labels before sending to LLM
+  const prompt = `${PRIVACY_CLAUSE}
+
+You are a LEAP 99 coaching program analyst. Generate a weekly coaching report for Week ${weekNumber}.
 
 Student data (M/R = milestones/results %, AS = action steps %):
 ${students
   .map(
-    (s) =>
-      `- ${s.name ?? s.email}: Enrollment M/R:${s.enrollmentResults}% AS:${s.enrollmentCurrentWeek}% | Personal M/R:${s.personalResults}% AS:${s.personalCurrentWeek}% | Professional M/R:${s.professionalResults}% AS:${s.professionalCurrentWeek}% | Meeting:${s.meetingAttendance ?? "N/A"}% Call:${s.callAttendance ?? "N/A"}%`
+    (s, idx) =>
+      `- Student ${idx + 1}: Enrollment M/R:${s.enrollmentResults}% AS:${s.enrollmentCurrentWeek}% | Personal M/R:${s.personalResults}% AS:${s.personalCurrentWeek}% | Professional M/R:${s.professionalResults}% AS:${s.professionalCurrentWeek}% | Meeting:${s.meetingAttendance ?? "N/A"}% Call:${s.callAttendance ?? "N/A"}%`
   )
   .join("\n")}
 
@@ -49,13 +51,7 @@ Return ONLY valid JSON:
   "motivationalNote": "An energizing message for the council"
 }`;
 
-  const message = await client.messages.create({
-    model: "claude-haiku-4-5-20251001",
-    max_tokens: 1500,
-    messages: [{ role: "user", content: prompt }],
-  });
-
-  const raw = message.content[0].type === "text" ? message.content[0].text : "";
+  const raw = await llmChat([{ role: "user", content: prompt }], { tier: "smart", maxTokens: 1500 });
   const match = raw.match(/\{[\s\S]*\}/);
   if (!match) throw new Error("Failed to parse AI response as JSON");
 

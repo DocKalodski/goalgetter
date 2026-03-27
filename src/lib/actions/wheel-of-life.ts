@@ -5,7 +5,8 @@ import { users, goals } from "@/lib/db/schema";
 import { getAuthUser } from "@/lib/auth/jwt";
 import { eq, and } from "drizzle-orm";
 import { createId } from "@paralleldrive/cuid2";
-import Anthropic from "@anthropic-ai/sdk";
+import { llmChat } from "@/lib/llm";
+import { nerRedact, PRIVACY_CLAUSE } from "@/lib/utils/sanitize-pii";
 
 // 12-category Life Assessment Wheel (MWF.v5)
 // Personal A–F  |  Professional G–L
@@ -54,9 +55,13 @@ export async function generateWheelGoals(
       .join("\n");
   }
 
-  const prompt = `You are a LEAP 99 life coaching AI. Based on the student's 12-area Life Assessment Wheel (MWF.v5) and their personal declaration, craft THREE concise, inspiring goal statements.
+  const safeDeclaration = await nerRedact(declaration || "");
 
-Student Declaration: "${declaration || "Not yet set"}"
+  const prompt = `${PRIVACY_CLAUSE}
+
+You are a LEAP 99 life coaching AI. Based on the student's 12-area Life Assessment Wheel (MWF.v5) and their personal declaration, craft THREE concise, inspiring goal statements.
+
+Student Declaration: "${safeDeclaration || "Not yet set"}"
 
 PERSONAL WHEEL (A–F):
 ${section(PERSONAL_KEYS)}
@@ -79,14 +84,7 @@ Rules:
 Respond ONLY in this exact JSON (no markdown):
 {"enrollment":"...","personal":"...","professional":"..."}`;
 
-  const client = new Anthropic();
-  const message = await client.messages.create({
-    model: "claude-haiku-4-5-20251001",
-    max_tokens: 400,
-    messages: [{ role: "user", content: prompt }],
-  });
-
-  const text = message.content[0].type === "text" ? message.content[0].text : "{}";
+  const text = await llmChat([{ role: "user", content: prompt }], { tier: "fast", maxTokens: 400 });
   try {
     const parsed = JSON.parse(text.trim());
     return {
@@ -166,14 +164,22 @@ export async function improveSmarterField(
     goalType === "personal"   ? "Personal (health / relationships / wellbeing)" :
                                 "Professional (skills / leadership / learning)";
 
-  const prompt = `You are a LEAP 99 life coaching AI. A student's SMARTER goal field needs improvement.
+  const [safeDeclaration2, safeGoalStatement, safeCurrentValue] = await Promise.all([
+    nerRedact(declaration || ""),
+    nerRedact(goalStatement || ""),
+    nerRedact(currentValue),
+  ]);
 
-Student's declaration: "${declaration || "Not yet set"}"
+  const prompt = `${PRIVACY_CLAUSE}
+
+You are a LEAP 99 life coaching AI. A student's SMARTER goal field needs improvement.
+
+Student's declaration: "${safeDeclaration2 || "Not yet set"}"
 Goal type: ${goalTypeLabel}
-Current goal statement: "${goalStatement || "Not yet set"}"
+Current goal statement: "${safeGoalStatement || "Not yet set"}"
 
 Field being edited: ${fieldLabel}
-Current value: "${currentValue}"
+Current value: "${safeCurrentValue}"
 Issue found: ${issue}
 
 Rewrite this single field to fix the issue. Keep the student's original intent and context. Make it specific, concrete, emotionally grounded, and aligned with their declaration.
@@ -187,14 +193,7 @@ Rules:
 Respond ONLY in this exact JSON (no markdown, no extra text):
 {"improved":"...","explanation":"One sentence: what changed and why"}`;
 
-  const client = new Anthropic();
-  const message = await client.messages.create({
-    model: "claude-haiku-4-5-20251001",
-    max_tokens: 300,
-    messages: [{ role: "user", content: prompt }],
-  });
-
-  const text = message.content[0].type === "text" ? message.content[0].text : "{}";
+  const text = await llmChat([{ role: "user", content: prompt }], { tier: "fast", maxTokens: 300 });
   try {
     const parsed = JSON.parse(text.trim());
     return {

@@ -1,10 +1,9 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
 import { verifyToken, isHeadCoach,
 } from "@/lib/auth/jwt";
 import { cookies } from "next/headers";
-
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+import { nerRedact, PRIVACY_CLAUSE } from "@/lib/utils/sanitize-pii";
+import { llmStream } from "@/lib/llm";
 
 const COACHING_SYSTEM_PROMPT = `You are a professional coaching assistant for the LEAP 99 program, a 12-week goal achievement cohort run by Doc Kalodski. You help coaches support their students effectively.
 
@@ -42,7 +41,9 @@ You assist coaches (and the head coach) in:
 - Never preachy — give practical, actionable coaching suggestions
 - Keep responses concise and structured (bullet points or numbered steps when listing actions)
 
-When student context is provided (goals, scores, progress), always reference it specifically in your response.`;
+When student context is provided (goals, scores, progress), always reference it specifically in your response.
+
+${PRIVACY_CLAUSE}`;
 
 function buildStudentContext(ctx: {
   studentName: string;
@@ -54,8 +55,9 @@ function buildStudentContext(ctx: {
   professionalCurrentWeek: number;
   reportingWeek: number;
 }): string {
+  // studentName is intentionally not sent to the LLM — use generic label for privacy
   return `
-## Current Student: ${ctx.studentName}
+## Current Student: [Student]
 **Reporting Week:** ${ctx.reportingWeek}
 
 | Domain | Results | Milestones (this week) |
@@ -113,48 +115,26 @@ export async function POST(request: Request) {
     ? COACHING_SYSTEM_PROMPT + "\n\n" + buildStudentContext(studentContext)
     : COACHING_SYSTEM_PROMPT;
 
-  // Filter out empty assistant messages (streaming placeholders) before sending
-  const validMessages = trimmedMessages.filter(
-    (m) => !(m.role === "assistant" && m.content === "")
-  );
+  // Filter empty placeholders, then NER-redact all message content before sending
+  const rawMessages = trimmedMessages.filter((m) => !(m.role === "assistant" && m.content === ""));
+  const redactedContents = await Promise.all(rawMessages.map((m) => nerRedact(m.content)));
+  const validMessages = rawMessages.map((m, i) => ({ ...m, content: redactedContents[i] }));
 
   if (!validMessages.length || validMessages[validMessages.length - 1].role !== "user") {
     return NextResponse.json({ error: "Invalid message sequence" }, { status: 400 });
   }
 
-  let stream: ReturnType<typeof client.messages.stream>;
+  let readableStream: ReadableStream<Uint8Array>;
   try {
-    stream = client.messages.stream({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 1024,
+    readableStream = await llmStream(validMessages, {
+      tier: "smart",
+      maxTokens: 1024,
       system: systemPrompt,
-      messages: validMessages,
     });
   } catch (err) {
-    console.error("[ai/chat] stream init error:", err);
+    console.error("[ai/chat] stream error:", err);
     return NextResponse.json({ error: "Failed to start AI stream" }, { status: 500 });
   }
-
-  const encoder = new TextEncoder();
-
-  const readableStream = new ReadableStream({
-    async start(controller) {
-      try {
-        for await (const chunk of stream) {
-          if (
-            chunk.type === "content_block_delta" &&
-            chunk.delta.type === "text_delta"
-          ) {
-            controller.enqueue(encoder.encode(chunk.delta.text));
-          }
-        }
-        controller.close();
-      } catch (err) {
-        console.error("[ai/chat] stream read error:", err);
-        controller.error(err);
-      }
-    },
-  });
 
   return new Response(readableStream, {
     headers: {

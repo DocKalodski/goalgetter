@@ -111,7 +111,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export function L1SecurityPage() {
-  const { setL1SubView } = useNavigation();
+  const { setL1SubView, setL1ManageOpen } = useNavigation();
   const [data, setData] = useState<SecurityData | null>(null);
   const [loading, setLoading] = useState(true);
   const [showAllLogins, setShowAllLogins] = useState(false);
@@ -156,7 +156,7 @@ export function L1SecurityPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <button type="button" onClick={() => setL1SubView("overview")} className="p-2 rounded-lg hover:bg-muted transition-colors">
+          <button type="button" onClick={() => { setL1SubView("overview"); setL1ManageOpen(true); }} className="p-2 rounded-lg hover:bg-muted transition-colors">
             <ArrowLeft className="h-5 w-5" />
           </button>
           <Shield className="h-6 w-6 text-blue-400" />

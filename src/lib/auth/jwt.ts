@@ -7,8 +7,9 @@ const REFRESH_TOKEN_EXPIRY = "7d";
 
 export interface JWTPayload {
   userId: string;
-  role: "head_coach" | "coach" | "council_leader" | "student";
+  role: "head_coach" | "coach" | "council_leader" | "student" | "facilitator" | "developer";
   canViewAllCouncils?: boolean;
+  permissions?: string[];
 }
 
 export async function createAccessToken(
@@ -70,10 +71,10 @@ export async function getAuthUser(): Promise<JWTPayload | null> {
   return verifyToken(token);
 }
 
-/** Returns true for head_coach OR any student with canViewAllCouncils (admin-student). */
+/** Returns true for head_coach, developer, or any user with canViewAllCouncils. */
 export function isHeadCoach(user: JWTPayload | null): boolean {
   if (!user) return false;
-  return user.role === "head_coach" || user.canViewAllCouncils === true;
+  return user.role === "head_coach" || user.role === "developer" || user.canViewAllCouncils === true;
 }
 
 export async function clearAuthCookies() {

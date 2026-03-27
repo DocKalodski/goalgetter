@@ -1,7 +1,9 @@
 "use client";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Mic, MicOff, Send, Volume2, Save, Bot, User } from "lucide-react";
+import { scanForPII } from "@/lib/utils/pii-scan";
 import { createCoachSession, updateSessionTranscript } from "@/lib/actions/coach-sessions";
+import { UpgradeModuleBanner } from "@/components/ui/UpgradeModuleBanner";
 
 interface VoiceAICoachTabProps {
   students: { id: string; name: string | null }[];
@@ -72,9 +74,16 @@ export function VoiceAICoachTab({
   };
 
   const submitMessage = useCallback(
-    async (text: string) => {
+    async (text: string, bypassScan = false) => {
       const trimmed = text.trim();
       if (!trimmed || isLoading) return;
+      if (!bypassScan) {
+        const scan = scanForPII(trimmed);
+        if (!scan.clean) {
+          const ok = window.confirm(`⚠️ Privacy Check\n\nMessage may contain: ${scan.warnings.join(", ")}.\n\nIt will be automatically redacted before reaching the AI.\n\nSend anyway?`);
+          if (!ok) return;
+        }
+      }
       setInputText("");
       setInterimText("");
 
@@ -232,6 +241,7 @@ export function VoiceAICoachTab({
 
   return (
     <div className="flex flex-col min-h-[600px] bg-card rounded-xl border border-border overflow-hidden">
+      <div className="px-4 pt-4"><UpgradeModuleBanner /></div>
       {/* Top bar */}
       <div className="flex items-center gap-3 px-4 py-3 border-b border-border bg-muted/30">
         <label className="text-sm font-medium text-muted-foreground whitespace-nowrap">Student:</label>
@@ -269,7 +279,7 @@ export function VoiceAICoachTab({
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-xl">
               {STARTER_PROMPTS.map((prompt) => (
-                <button key={prompt} onClick={() => submitMessage(prompt)}
+                <button key={prompt} onClick={() => submitMessage(prompt, true)}
                   className="text-left px-3 py-2.5 rounded-lg border border-border bg-muted/30 hover:bg-muted text-sm text-muted-foreground hover:text-foreground transition-colors">
                   {prompt}
                 </button>
