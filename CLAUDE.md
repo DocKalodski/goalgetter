@@ -5,10 +5,39 @@
 
 ### 0. Context & Chat Management
 
-**If the same type of fix is applied 3 times → stop and say:**
-> "This is the 3rd time this type of fix is being applied. There is a systemic root cause. Transfer to a new code chat."
+#### PROACTIVE triggers — fire BEFORE quality drops, not after
 
-Find the root cause — do NOT keep patching individual instances.
+**1. Cross-project rule**
+If this chat already has GoalGetter context and the user brings a task from another app — stop:
+> "⚠️ This chat has GoalGetter context loaded. Start a new chat for [other app] to avoid context bleed."
+
+**2. File-count rule**
+After editing 5 distinct files — warn before starting the 6th:
+> "⚠️ 5 files edited in this session. If these aren't all one connected feature, start a new chat now."
+
+**3. Topic-count rule**
+After the 3rd distinct task or feature — warn before starting the 4th:
+> "⚠️ This is the 3rd separate topic in this chat. Consider opening a new chat before adding more."
+
+**4. Re-explanation signal**
+If the user re-describes context already covered earlier — stop immediately:
+> "⚠️ You're re-explaining something from earlier — context loss signal. New chat now."
+
+**5. "Still / again" signal**
+If the user says "still broken", "still not working", "again", "same issue" — stop before attempting another fix:
+> "⚠️ 'Still/again' = attempted before in this session. New chat + fresh approach."
+
+**6. Same-area check**
+Before applying any fix, ask: *"Did we touch this same file or area earlier in this chat?"*
+If yes — warn BEFORE applying:
+> "⚠️ We already touched this area earlier. A second patch = systemic issue. New chat now."
+
+Do NOT apply a 3rd patch to the same area. Ever.
+
+#### REACTIVE triggers — act on first occurrence
+
+- Same instruction ignored ONCE → new chat
+- Any fix undone or forgotten from earlier in the session → new chat
 
 ### 1. AI Model — ALWAYS Haiku
 

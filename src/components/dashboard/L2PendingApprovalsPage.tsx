@@ -2,8 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useNavigation } from "@/components/layout/DashboardShell";
-import { getPendingApprovals } from "@/lib/actions/approvals";
-import { approveGoal, approveDeclaration, approveMilestone } from "@/lib/actions/approvals";
+import { getPendingApprovals, approveGoal, approveDeclaration, approveMilestone } from "@/lib/actions/approvals";
 import {
   ArrowLeft,
   ClipboardCheck,
@@ -29,6 +28,7 @@ export function L2PendingApprovalsPage() {
   const [items, setItems] = useState<PendingItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState<string | null>(null);
+  const [approvingAll, setApprovingAll] = useState(false);
 
   const loadItems = useCallback(async () => {
     try {
@@ -81,6 +81,24 @@ export function L2PendingApprovalsPage() {
     }
   };
 
+  const handleApproveAll = async () => {
+    const approvable = items.filter((i) => i.type !== "coach");
+    if (approvable.length === 0) return;
+    setApprovingAll(true);
+    try {
+      for (const item of approvable) {
+        if (item.type === "goal") await approveGoal(item.id, "approved");
+        else if (item.type === "declaration") await approveDeclaration(item.id, "approved");
+        else if (item.type === "milestone") await approveMilestone(item.id, "approved");
+      }
+      await loadItems();
+    } catch (error) {
+      console.error("Approve all failed:", error);
+    } finally {
+      setApprovingAll(false);
+    }
+  };
+
   const handleStudentClick = (studentId: string) => {
     setSelectedStudentId(studentId);
     setActiveL3Tab("goals");
@@ -126,12 +144,23 @@ export function L2PendingApprovalsPage() {
         >
           <ArrowLeft className="h-5 w-5" />
         </button>
-        <div>
+        <div className="flex-1">
           <h2 className="text-2xl font-bold">Pending Approvals</h2>
           <p className="text-muted-foreground text-sm">
             {items.length} item{items.length !== 1 ? "s" : ""} awaiting review
           </p>
         </div>
+        {items.filter((i) => i.type !== "coach").length > 0 && (
+          <button
+            type="button"
+            disabled={approvingAll}
+            onClick={handleApproveAll}
+            className="flex items-center gap-1.5 px-4 py-2 text-sm font-bold rounded-lg bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 transition-colors shrink-0"
+          >
+            <CheckCircle className="h-4 w-4" />
+            {approvingAll ? "Approving…" : `Approve All (${items.filter((i) => i.type !== "coach").length})`}
+          </button>
+        )}
       </div>
 
       {/* Approval items */}

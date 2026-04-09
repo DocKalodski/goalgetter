@@ -76,8 +76,12 @@ export async function updateMilestone(
 
   const now = new Date();
 
-  // Auto-calculate cumulative percentage from actions/results
-  if (updates.actions || updates.results) {
+  // Hard-lock W1=25%, W2=37.5% per LEAP 99 official schedule — cannot be overridden
+  if (weekNumber === 1) updates.cumulativePercentage = 25;
+  if (weekNumber === 2) updates.cumulativePercentage = 37.5;
+
+  // Auto-calculate cumulative percentage from actions/results (skipped for locked weeks)
+  if ((updates.actions || updates.results) && weekNumber !== 1 && weekNumber !== 2) {
     const actionsData = updates.actions
       ? JSON.parse(updates.actions)
       : existing[0]?.actions
@@ -107,14 +111,11 @@ export async function updateMilestone(
   const isOwnerEdit = goal && goal.userId === user.userId;
 
   if (existing.length > 0) {
+    // No auto-reset of approval — student must explicitly submit for review
     await db
       .update(weeklyMilestones)
       .set({
         ...updates,
-        // Reset approval when student edits, keep approved when coach edits
-        ...(isOwnerEdit
-          ? { approvalStatus: "pending" as const, approvedBy: null, approvedAt: null }
-          : {}),
         updatedAt: now,
       })
       .where(eq(weeklyMilestones.id, existing[0].id));
@@ -146,4 +147,32 @@ export async function getMilestones(goalId: string) {
     .select()
     .from(weeklyMilestones)
     .where(eq(weeklyMilestones.goalId, goalId));
+}
+
+export async function toggleMilestoneCompletion(milestoneId: string, isCompleted: boolean) {
+  const user = await getAuthUser();
+  if (!user) throw new Error("Unauthorized");
+
+  // Get milestone + goal to verify permission
+  const [milestone] = await db
+    .select()
+    .from(weeklyMilestones)
+    .where(eq(weeklyMilestones.id, milestoneId))
+    .limit(1);
+  if (!milestone) throw new Error("Milestone not found");
+
+  const canEdit = await canEditGoalMilestones(user.userId, user.role, milestone.goalId);
+  if (!canEdit) throw new Error("Forbidden");
+
+  const now = new Date();
+  await db
+    .update(weeklyMilestones)
+    .set({
+      isCompleted: isCompleted ? 1 : 0,
+      updatedAt: now,
+    })
+    .where(eq(weeklyMilestones.id, milestoneId));
+
+  revalidatePath("/l3");
+  return { success: true };
 }

@@ -4,10 +4,10 @@ import { useState, createContext, useContext } from "react";
 import { Header } from "./Header";
 import type { JWTPayload } from "@/lib/auth/jwt";
 
-export type NavigationLevel = "L1" | "L2" | "L3" | "profile";
+export type NavigationLevel = "L1" | "L2" | "L3" | "profile" | "essence-qualities";
 export type L1SubView = "overview" | "coaches" | "students" | "councils" | "data-sync" | "eavesdrop" | "security";
 export type L2SubView = "overview" | "approvals";
-export type L3Tab = "attendance" | "goals" | "feedback" | "action-planner" | "ask-ai" | "ai-coach" | "voice-coach" | "journey" | "calendar";
+export type L3Tab = "attendance" | "goals" | "feedback" | "action-planner" | "ask-ai" | "ai-coach" | "voice-coach" | "journey" | "calendar" | "ask-me-chat";
 
 interface NavigationContextType {
   currentPage: NavigationLevel;
@@ -26,8 +26,6 @@ interface NavigationContextType {
   setSelectedGoalType: (type: "enrollment" | "personal" | "professional") => void;
   activeL3Tab: L3Tab;
   setActiveL3Tab: (tab: L3Tab) => void;
-  aiCoachInitialMessage: string | null;
-  setAiCoachInitialMessage: (msg: string | null) => void;
   user: JWTPayload;
 }
 
@@ -54,8 +52,7 @@ export function DashboardShell({
   const [selectedGoalType, setSelectedGoalType] = useState<
     "enrollment" | "personal" | "professional"
   >("enrollment");
-  const [activeL3Tab, setActiveL3Tab] = useState<L3Tab>("action-planner");
-  const [aiCoachInitialMessage, setAiCoachInitialMessage] = useState<string | null>(null);
+  const [activeL3Tab, setActiveL3Tab] = useState<L3Tab>("goals");
 
   return (
     <NavigationContext.Provider
@@ -76,8 +73,6 @@ export function DashboardShell({
         setSelectedGoalType,
         activeL3Tab,
         setActiveL3Tab,
-        aiCoachInitialMessage,
-        setAiCoachInitialMessage,
         user,
       }}
     >

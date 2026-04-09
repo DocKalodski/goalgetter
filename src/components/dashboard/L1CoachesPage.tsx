@@ -49,7 +49,6 @@ export function L1CoachesPage() {
   const [editData, setEditData] = useState({ name: "", email: "" });
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-
   const loadCoaches = useCallback(async () => {
     try {
       const data = await getCoachesWithDetails();
@@ -360,10 +359,10 @@ export function L1CoachesPage() {
                                 email: coach.email,
                               });
                             }}
-                            className="p-1.5 rounded hover:bg-muted"
+                            className="p-1.5 rounded-md bg-muted border border-border text-red-500 hover:bg-red-500/10 hover:border-red-400/50 transition-colors"
                             title="Edit"
                           >
-                            <Pencil className="h-4 w-4" />
+                            <Pencil className="h-3.5 w-3.5" />
                           </button>
                           <button
                             onClick={() => handleDelete(coach.id)}
@@ -389,6 +388,7 @@ export function L1CoachesPage() {
           </table>
         </div>
       </div>
+
     </div>
   );
 }

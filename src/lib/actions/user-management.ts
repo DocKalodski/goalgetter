@@ -320,6 +320,58 @@ export async function updateCoachPermissions(coachId: string, permissions: strin
   return { success: true };
 }
 
+// ─── Head Coach: Facilitator CRUD ────────────────────────────────────────
+
+export async function getFacilitators() {
+  const user = await getAuthUser();
+  if (!user || !isHeadCoach(user)) throw new Error("Forbidden");
+  return db.select({ id: users.id, name: users.name, email: users.email, createdAt: users.createdAt })
+    .from(users).where(eq(users.role, "facilitator"));
+}
+
+const facilitatorSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  email: z.string().email("Invalid email"),
+  password: z.string().min(8, "Password must be at least 8 characters"),
+});
+
+export async function addFacilitator(data: z.infer<typeof facilitatorSchema>) {
+  const user = await getAuthUser();
+  if (!user || !isHeadCoach(user)) throw new Error("Forbidden");
+  const v = facilitatorSchema.parse(data);
+  const existing = await db.select().from(users).where(eq(users.email, v.email)).limit(1);
+  if (existing.length > 0) return { success: false, error: "Email already registered" };
+  const [batch] = await db.select().from(batches).limit(1);
+  const now = new Date();
+  await db.insert(users).values({
+    id: createId(), email: v.email, passwordHash: await hashPassword(v.password),
+    name: v.name, role: "facilitator", batchId: batch?.id,
+    approvalStatus: "approved", approvedBy: user.userId, createdAt: now, updatedAt: now,
+  });
+  revalidatePath("/l1");
+  return { success: true };
+}
+
+export async function updateFacilitator(id: string, data: { name: string; email: string }) {
+  const user = await getAuthUser();
+  if (!user || !isHeadCoach(user)) throw new Error("Forbidden");
+  const existing = await db.select().from(users).where(eq(users.email, data.email)).limit(1);
+  if (existing.length > 0 && existing[0].id !== id) return { success: false, error: "Email already in use" };
+  await db.update(users).set({ name: data.name, email: data.email, updatedAt: new Date() }).where(eq(users.id, id));
+  revalidatePath("/l1");
+  return { success: true };
+}
+
+export async function deleteFacilitator(id: string) {
+  const user = await getAuthUser();
+  if (!user || !isHeadCoach(user)) throw new Error("Forbidden");
+  const [faci] = await db.select().from(users).where(eq(users.id, id)).limit(1);
+  if (!faci || faci.role !== "facilitator") return { success: false, error: "Facilitator not found" };
+  await db.delete(users).where(eq(users.id, id));
+  revalidatePath("/l1");
+  return { success: true };
+}
+
 // ─── Head Coach / Coach: Update a Student ─────────────────────────────────
 
 export async function updateStudent(studentId: string, data: { name: string; email: string }) {

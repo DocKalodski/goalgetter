@@ -16,6 +16,7 @@ import {
   ChevronDown,
   ChevronUp,
   ArrowLeft,
+  UserX,
 } from "lucide-react";
 import { useNavigation } from "@/components/layout/DashboardShell";
 
@@ -50,6 +51,15 @@ interface SessionRow {
   expiresAt: string | null;
 }
 
+interface InactiveUserRow {
+  id: string;
+  name: string | null;
+  email: string;
+  role: string;
+  createdAt: string | null;
+  lastLogin: string | null;
+}
+
 interface SecurityData {
   stats: {
     loginsToday: number;
@@ -57,10 +67,12 @@ interface SecurityData {
     successToday: number;
     activeSessions: number;
     suspiciousCount: number;
+    inactiveCount: number;
   };
   recentLogins: LoginAuditRow[];
   currentSessions: SessionRow[];
   suspiciousLogins: LoginAuditRow[];
+  inactiveAccounts: InactiveUserRow[];
 }
 
 function DeviceIcon({ type }: { type: string | null }) {
@@ -115,7 +127,7 @@ export function L1SecurityPage() {
   const [data, setData] = useState<SecurityData | null>(null);
   const [loading, setLoading] = useState(true);
   const [showAllLogins, setShowAllLogins] = useState(false);
-  const [activeTab, setActiveTab] = useState<"logins" | "sessions" | "suspicious">("logins");
+  const [activeTab, setActiveTab] = useState<"logins" | "sessions" | "suspicious" | "inactive">("logins");
 
   async function load() {
     setLoading(true);
@@ -177,7 +189,7 @@ export function L1SecurityPage() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         <StatCard
           label="Logins Today"
           value={data.stats.loginsToday}
@@ -209,6 +221,13 @@ export function L1SecurityPage() {
           color={data.stats.suspiciousCount > 0 ? "orange" : "gray"}
           alert={data.stats.suspiciousCount > 0}
         />
+        <StatCard
+          label="Inactive 7d+"
+          value={data.stats.inactiveCount}
+          icon={<UserX className="h-5 w-5 text-slate-400" />}
+          color={data.stats.inactiveCount > 0 ? "slate" : "gray"}
+          alert={false}
+        />
       </div>
 
       {/* Suspicious Alert Banner */}
@@ -227,13 +246,13 @@ export function L1SecurityPage() {
       )}
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-border">
-        {(["logins", "sessions", "suspicious"] as const).map((tab) => (
+      <div className="flex gap-1 border-b border-border flex-wrap">
+        {(["logins", "sessions", "suspicious", "inactive"] as const).map((tab) => (
           <button
             type="button"
             key={tab}
             onClick={() => setActiveTab(tab)}
-            className={`px-4 py-2 text-sm font-medium capitalize transition-colors ${
+            className={`px-4 py-2 text-sm font-medium transition-colors ${
               activeTab === tab
                 ? "border-b-2 border-blue-500 text-blue-400"
                 : "text-muted-foreground hover:text-foreground"
@@ -247,6 +266,14 @@ export function L1SecurityPage() {
                   <span className="h-2 w-2 rounded-full bg-orange-400 inline-block" />
                 )}
                 Suspicious ({data.suspiciousLogins.length})
+              </span>
+            )}
+            {tab === "inactive" && (
+              <span className="flex items-center gap-1">
+                {data.inactiveAccounts.length > 0 && (
+                  <span className="h-2 w-2 rounded-full bg-slate-400 inline-block" />
+                )}
+                Inactive ({data.inactiveAccounts.length})
               </span>
             )}
           </button>
@@ -375,6 +402,57 @@ export function L1SecurityPage() {
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Inactive Tab ── */}
+      {activeTab === "inactive" && (
+        <div className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            Coaches and students with no login in the past 7 days (or never logged in)
+          </p>
+          {data.inactiveAccounts.length === 0 ? (
+            <div className="text-center py-16">
+              <CheckCircle className="h-8 w-8 text-emerald-400 mx-auto mb-2" />
+              <p className="text-sm text-muted-foreground">All accounts are active — everyone logged in within 7 days</p>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-border overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-muted/40 text-muted-foreground text-xs uppercase tracking-wide">
+                    <th className="text-left px-4 py-3">User</th>
+                    <th className="text-left px-4 py-3">Role</th>
+                    <th className="text-left px-4 py-3">Last Login</th>
+                    <th className="text-left px-4 py-3 hidden md:table-cell">Account Created</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {data.inactiveAccounts.map((u) => (
+                    <tr key={u.id} className="hover:bg-muted/30 transition-colors">
+                      <td className="px-4 py-3">
+                        <p className="font-medium text-foreground text-xs">{u.name || "—"}</p>
+                        <p className="text-muted-foreground text-xs">{u.email}</p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <RolePill role={u.role} />
+                      </td>
+                      <td className="px-4 py-3">
+                        {u.lastLogin ? (
+                          <span className="text-xs text-amber-500 font-medium">{timeAgo(u.lastLogin)}</span>
+                        ) : (
+                          <span className="text-xs text-red-400 font-medium">Never logged in</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-muted-foreground hidden md:table-cell">
+                        {fmtTime(u.createdAt)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>

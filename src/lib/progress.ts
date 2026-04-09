@@ -9,6 +9,8 @@ import { computeCurrentWeekFromDate } from "@/lib/utils/week-targets";
  * not the stale DB current_week column.
  */
 export async function getCurrentWeek(): Promise<number> {
+  const override = process.env.BETA_CURRENT_WEEK;
+  if (override) { const n = parseInt(override, 10); if (!isNaN(n)) return n; }
   const [batch] = await db.select({ startDate: batches.startDate, totalWeeks: batches.totalWeeks }).from(batches).limit(1);
   if (!batch?.startDate) return 7;
   return computeCurrentWeekFromDate(batch.startDate, batch.totalWeeks ?? 12);
@@ -16,8 +18,10 @@ export async function getCurrentWeek(): Promise<number> {
 
 /** Fetch the total number of weeks for the active batch. */
 export async function getTotalWeeks(): Promise<number> {
+  const override = process.env.BETA_TOTAL_WEEKS;
+  if (override) { const n = parseInt(override, 10); if (!isNaN(n)) return n; }
   const [batch] = await db.select({ totalWeeks: batches.totalWeeks }).from(batches).limit(1);
-  return batch?.totalWeeks ?? 12;
+  return batch?.totalWeeks ?? 8;
 }
 
 /**
@@ -32,7 +36,7 @@ export async function getTotalWeeks(): Promise<number> {
  * @param totalWeeks  Total weeks in the batch (from program settings).
  *                    Defaults to 12 for backward compatibility.
  */
-export async function getUserProgress(userId: string, currentWeek: number, totalWeeks = 12) {
+export async function getUserProgress(userId: string, currentWeek: number, totalWeeks = 8) {
   const userGoals = await db
     .select({ id: goals.id, goalType: goals.goalType })
     .from(goals)
@@ -99,12 +103,12 @@ export async function getUserProgress(userId: string, currentWeek: number, total
       .sort((a, b) => b.weekNumber - a.weekNumber)
       .find((m) => (m.cumulativePercentage || 0) > 0);
 
-    progress[goal.goalType] = Math.round((completedWeeks / totalWeeks) * 10000) / 100;
+    progress[goal.goalType] = Math.round((completedWeeks / totalWeeks) * 100);
     if (latestWithPct) {
       const maxAllowed = Math.round((latestWithPct.weekNumber / totalWeeks) * 100);
-      resultsProgress[goal.goalType] = Math.min(latestWithPct.cumulativePercentage!, maxAllowed);
+      resultsProgress[goal.goalType] = Math.round(Math.min(latestWithPct.cumulativePercentage!, maxAllowed));
     } else {
-      resultsProgress[goal.goalType] = Math.round((completedResultsWeeks / totalWeeks) * 10000) / 100;
+      resultsProgress[goal.goalType] = Math.round((completedResultsWeeks / totalWeeks) * 100);
     }
 
     // Action Steps % = weeks completed / weeks elapsed × 100

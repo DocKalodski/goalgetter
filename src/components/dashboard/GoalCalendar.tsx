@@ -32,6 +32,7 @@ interface GoalCalendarProps {
   defaultExpanded?: boolean;
   activeTab?: "enrollment" | "personal" | "professional";
   onTabChange?: (tab: "enrollment" | "personal" | "professional") => void;
+  totalWeeks?: number;
 }
 
 // Format a YYYY-MM-DD string as "Feb 2"
@@ -113,6 +114,7 @@ export function GoalCalendar({
   defaultExpanded = false,
   activeTab: controlledTab,
   onTabChange,
+  totalWeeks = 8,
 }: GoalCalendarProps) {
   const [remindingWeek, setRemindingWeek] = useState<number | null>(null);
   const [sentWeeks, setSentWeeks] = useState<Set<number>>(new Set());
@@ -131,7 +133,7 @@ export function GoalCalendar({
   const activeMilestones = allGoals ? (allGoals[activeTab] ?? []) : milestones;
   const activeGoalType = allGoals ? activeTab : goalType;
 
-  const totalWeeks = 12;
+  // totalWeeks comes from prop (default 8)
 
   const weeks = Array.from({ length: totalWeeks }, (_, i) => {
     const weekNumber = i + 1;
@@ -170,7 +172,7 @@ export function GoalCalendar({
         className="w-full flex items-center justify-between px-4 py-3 min-h-[44px] hover:bg-muted/30 transition-colors text-left"
       >
         <div>
-          <h3 className="text-base font-bold leading-tight">12-Week Goal Calendar</h3>
+          <h3 className="text-base font-bold leading-tight">{totalWeeks}-Week Goal Calendar</h3>
           <p className="text-xs text-muted-foreground mt-0.5">Weekly milestone progress at a glance</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">

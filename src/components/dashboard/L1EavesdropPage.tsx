@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { Headphones, Bell, BellOff, Loader2, MessageSquare, X, ChevronDown, ChevronUp, ArrowLeft } from "lucide-react";
+import { Headphones, Bell, BellOff, Loader2, MessageSquare, X, ChevronDown, ChevronUp, ArrowLeft, AlertTriangle, RefreshCw } from "lucide-react";
 import { scanForPII } from "@/lib/utils/pii-scan";
 import { UpgradeModuleBanner } from "@/components/ui/UpgradeModuleBanner";
 import { getAllCoachSessionsForHC, flagSessionForHC } from "@/lib/actions/coach-sessions";
+import { getCrisisSignals } from "@/lib/actions/direct-messages";
+import type { CrisisFlag } from "@/lib/actions/direct-messages";
 import { useNavigation } from "@/components/layout/DashboardShell";
 
 type HCFlag = "needs_attention" | "at_risk" | "great_progress" | "routine";
@@ -225,6 +227,7 @@ function SessionCard({
 
       {/* Ask AI toggle */}
       <button
+        type="button"
         onClick={() => setChatOpen((o) => !o)}
         className="flex items-center gap-1.5 text-sm text-primary hover:text-primary/80 transition-colors font-medium"
       >
@@ -241,6 +244,7 @@ function SessionCard({
             <div className="flex flex-wrap gap-2">
               {STARTER_PROMPTS.map((p) => (
                 <button
+                  type="button"
                   key={p}
                   onClick={() => sendMessage(p, true)}
                   className="text-xs px-3 py-1.5 rounded-full bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors"
@@ -277,6 +281,8 @@ function SessionCard({
               disabled={streaming}
             />
             <button
+              type="button"
+              aria-label="Send message"
               onClick={() => sendMessage(input)}
               disabled={!input.trim() || streaming}
               className="px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
@@ -290,11 +296,80 @@ function SessionCard({
   );
 }
 
+const CRISIS_TYPE_CONFIG = {
+  life_threat: { label: "Life Threat", color: "text-red-700 dark:text-red-400", bg: "bg-red-50 dark:bg-red-950/40", border: "border-red-300 dark:border-red-800", dot: "bg-red-500" },
+  quit:        { label: "Quitting Signal", color: "text-amber-700 dark:text-amber-400", bg: "bg-amber-50 dark:bg-amber-950/30", border: "border-amber-300 dark:border-amber-800", dot: "bg-amber-500" },
+  help_signal: { label: "Help Signal", color: "text-orange-700 dark:text-orange-400", bg: "bg-orange-50 dark:bg-orange-950/30", border: "border-orange-300 dark:border-orange-800", dot: "bg-orange-500" },
+  unanswered_help: { label: "Unanswered >24h", color: "text-slate-700 dark:text-slate-400", bg: "bg-slate-50 dark:bg-slate-950/30", border: "border-slate-300 dark:border-slate-700", dot: "bg-slate-400" },
+} as const;
+
+function timeAgo(d: Date): string {
+  const diff = Date.now() - new Date(d).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
+
+const DISMISSED_KEY = "gg_crisis_dismissed_v1";
+function getDismissed(): Set<string> {
+  try { return new Set(JSON.parse(localStorage.getItem(DISMISSED_KEY) ?? "[]")); } catch { return new Set(); }
+}
+function addDismissed(key: string) {
+  const d = getDismissed();
+  d.add(key);
+  // Keep at most 500 entries
+  const arr = [...d].slice(-500);
+  localStorage.setItem(DISMISSED_KEY, JSON.stringify(arr));
+}
+
+function CrisisCard({ flag, onDismiss }: { flag: CrisisFlag; onDismiss: (key: string) => void }) {
+  const cfg = CRISIS_TYPE_CONFIG[flag.flagType];
+  const dismissKey = `${flag.messageId}-${flag.flagType}`;
+  return (
+    <div className={`rounded-xl border p-4 space-y-2 ${cfg.bg} ${cfg.border}`}>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-2">
+          <span className={`w-2.5 h-2.5 rounded-full ${cfg.dot} shrink-0`} />
+          <span className={`text-xs font-bold uppercase tracking-wide ${cfg.color}`}>{cfg.label}</span>
+          <span className="text-xs text-muted-foreground">matched: <span className="font-mono font-semibold">"{flag.matchedKeyword}"</span></span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">{timeAgo(flag.createdAt)}</span>
+          <button
+            type="button"
+            onClick={() => { addDismissed(dismissKey); onDismiss(dismissKey); }}
+            className="text-xs px-2 py-0.5 rounded-md bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            title="Dismiss this flag"
+          >
+            Dismiss
+          </button>
+        </div>
+      </div>
+      <p className="text-sm leading-relaxed border-l-2 border-current pl-3 text-foreground italic">
+        "{flag.content.length > 300 ? flag.content.slice(0, 300) + "…" : flag.content}"
+      </p>
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <span className="font-medium text-foreground">{flag.senderName ?? flag.senderId}</span>
+        <span>({flag.senderRole})</span>
+        <span>→</span>
+        <span>student: <span className="font-medium text-foreground">{flag.studentName ?? flag.studentId}</span></span>
+      </div>
+    </div>
+  );
+}
+
 export function L1EavesdropPage() {
   const { setL1SubView, setL1ManageOpen } = useNavigation();
   const [sessions, setSessions] = useState<HCSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState("all");
+  const [activeTab, setActiveTab] = useState<"sessions" | "crisis">("sessions");
+  const [crisisFlags, setCrisisFlags] = useState<CrisisFlag[]>([]);
+  const [crisisLoading, setCrisisLoading] = useState(false);
+  const [crisisLoaded, setCrisisLoaded] = useState(false);
+  const [dismissedKeys, setDismissedKeys] = useState<Set<string>>(() => getDismissed());
 
   useEffect(() => {
     getAllCoachSessionsForHC()
@@ -302,6 +377,19 @@ export function L1EavesdropPage() {
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);
+
+  async function loadCrisis() {
+    setCrisisLoading(true);
+    try {
+      const flags = await getCrisisSignals();
+      setCrisisFlags(flags);
+      setCrisisLoaded(true);
+    } catch (e) {
+      console.error("Crisis scan failed:", e);
+    } finally {
+      setCrisisLoading(false);
+    }
+  }
 
   function handleFlagged(id: string, flag: string, oneLiner: string) {
     setSessions((prev) =>
@@ -319,7 +407,7 @@ export function L1EavesdropPage() {
       {/* Header */}
       <div>
         <div className="flex items-center gap-3 mb-1">
-          <button type="button" onClick={() => { setL1SubView("overview"); setL1ManageOpen(true); }} className="p-2 rounded-lg hover:bg-muted transition-colors">
+          <button type="button" aria-label="Back" onClick={() => { setL1SubView("overview"); setL1ManageOpen(true); }} className="p-2 rounded-lg hover:bg-muted transition-colors">
             <ArrowLeft className="h-5 w-5" />
           </button>
           <Headphones className="h-6 w-6 text-primary" />
@@ -330,61 +418,158 @@ export function L1EavesdropPage() {
         </p>
       </div>
 
-      {/* Legend */}
-      <div className="flex flex-wrap gap-3 text-sm text-muted-foreground p-3 rounded-lg bg-muted/20 border border-border">
-        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-red-500 inline-block" /> Needs Attention</span>
-        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-amber-500 inline-block" /> At Risk</span>
-        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-green-500 inline-block" /> Great Progress</span>
-        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-muted-foreground/40 inline-block" /> Routine</span>
-        <span className="flex items-center gap-1.5"><MessageSquare className="h-3.5 w-3.5" /> Ask AI about any session</span>
+      {/* Tabs */}
+      <div className="flex gap-1 border-b border-border">
+        <button
+          type="button"
+          onClick={() => setActiveTab("sessions")}
+          className={`px-4 py-2 text-sm font-medium transition-colors ${activeTab === "sessions" ? "border-b-2 border-primary text-primary" : "text-muted-foreground hover:text-foreground"}`}
+        >
+          Coaching Sessions ({sessions.length})
+        </button>
+        <button
+          type="button"
+          onClick={() => { setActiveTab("crisis"); if (!crisisLoaded) loadCrisis(); }}
+          className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium transition-colors ${activeTab === "crisis" ? "border-b-2 border-red-500 text-red-500" : "text-muted-foreground hover:text-foreground"}`}
+        >
+          {crisisLoaded && crisisFlags.filter(f => f.flagType === "life_threat").length > 0 && (
+            <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse inline-block" />
+          )}
+          Crisis Scanner
+          {crisisLoaded && <span className="text-xs opacity-70 ml-1">({crisisFlags.length})</span>}
+        </button>
       </div>
 
-      {/* Filter chips */}
-      <div className="flex flex-wrap gap-2">
-        {FILTER_OPTIONS.map((opt) => (
-          <button
-            key={opt.value}
-            onClick={() => setActiveFilter(opt.value)}
-            className={`text-sm px-3 py-1.5 rounded-full border font-medium transition-colors ${
-              activeFilter === opt.value
-                ? "bg-primary text-primary-foreground border-primary"
-                : "bg-background border-border text-muted-foreground hover:border-primary hover:text-primary"
-            }`}
-          >
-            {opt.label}
-            {opt.value !== "all" && (
-              <span className="ml-1.5 text-xs opacity-70">
-                ({sessions.filter((s) => s.hcFlag === opt.value).length})
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
+      {/* ── Sessions Tab ── */}
+      {activeTab === "sessions" && (
+        <>
+          {/* Legend */}
+          <div className="flex flex-wrap gap-3 text-sm text-muted-foreground p-3 rounded-lg bg-muted/20 border border-border">
+            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-red-500 inline-block" /> Needs Attention</span>
+            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-amber-500 inline-block" /> At Risk</span>
+            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-green-500 inline-block" /> Great Progress</span>
+            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-muted-foreground/40 inline-block" /> Routine</span>
+            <span className="flex items-center gap-1.5"><MessageSquare className="h-3.5 w-3.5" /> Ask AI about any session</span>
+          </div>
 
-      {/* Session list */}
-      {loading ? (
+          {/* Filter chips */}
+          <div className="flex flex-wrap gap-2">
+            {FILTER_OPTIONS.map((opt) => (
+              <button
+                type="button"
+                key={opt.value}
+                onClick={() => setActiveFilter(opt.value)}
+                className={`text-sm px-3 py-1.5 rounded-full border font-medium transition-colors ${
+                  activeFilter === opt.value
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-background border-border text-muted-foreground hover:border-primary hover:text-primary"
+                }`}
+              >
+                {opt.label}
+                {opt.value !== "all" && (
+                  <span className="ml-1.5 text-xs opacity-70">
+                    ({sessions.filter((s) => s.hcFlag === opt.value).length})
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+
+          {/* Session list */}
+          {loading ? (
+            <div className="space-y-4">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="h-28 rounded-xl bg-muted animate-pulse" />
+              ))}
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="text-center py-16 text-muted-foreground">
+              <BellOff className="h-10 w-10 mx-auto mb-3 opacity-40" />
+              <p className="text-lg font-medium">
+                {sessions.length === 0 ? "No published sessions yet" : "No sessions match this filter"}
+              </p>
+              <p className="text-sm mt-1">
+                {sessions.length === 0
+                  ? "Sessions appear here once coaches publish them"
+                  : "Try a different filter above"}
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {filtered.map((session) => (
+                <SessionCard key={session.id} session={session} onFlagged={handleFlagged} />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ── Crisis Scanner Tab ── */}
+      {activeTab === "crisis" && (
         <div className="space-y-4">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-28 rounded-xl bg-muted animate-pulse" />
-          ))}
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="text-center py-16 text-muted-foreground">
-          <BellOff className="h-10 w-10 mx-auto mb-3 opacity-40" />
-          <p className="text-lg font-medium">
-            {sessions.length === 0 ? "No published sessions yet" : "No sessions match this filter"}
-          </p>
-          <p className="text-sm mt-1">
-            {sessions.length === 0
-              ? "Sessions appear here once coaches publish them"
-              : "Try a different filter above"}
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {filtered.map((session) => (
-            <SessionCard key={session.id} session={session} onFlagged={handleFlagged} />
-          ))}
+          <div className="flex items-start justify-between gap-3">
+            <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-3 flex items-start gap-2 flex-1">
+              <AlertTriangle className="h-4 w-4 text-red-400 mt-0.5 shrink-0" />
+              <p className="text-xs text-red-400 leading-relaxed">
+                <span className="font-bold">For emergencies only.</span> Scans direct messages for life-threatening language, quitting signals, and unanswered help requests. Use this to intervene — not to monitor.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={loadCrisis}
+              disabled={crisisLoading}
+              className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg bg-muted hover:bg-muted/80 text-muted-foreground shrink-0"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${crisisLoading ? "animate-spin" : ""}`} />
+              {crisisLoading ? "Scanning…" : "Rescan"}
+            </button>
+          </div>
+
+          {!crisisLoaded && !crisisLoading && (
+            <div className="text-center py-12 text-muted-foreground">
+              <p className="text-sm">Click the Crisis Scanner tab to run a scan.</p>
+            </div>
+          )}
+
+          {crisisLoading && (
+            <div className="space-y-3">
+              {[1, 2].map((i) => <div key={i} className="h-24 rounded-xl bg-muted animate-pulse" />)}
+            </div>
+          )}
+
+          {crisisLoaded && !crisisLoading && (
+            <>
+              {/* Summary pills */}
+              <div className="flex flex-wrap gap-2">
+                {(["life_threat", "quit", "help_signal", "unanswered_help"] as const).map((type) => {
+                  const count = crisisFlags.filter(f => f.flagType === type).length;
+                  const cfg = CRISIS_TYPE_CONFIG[type];
+                  return count > 0 ? (
+                    <span key={type} className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${cfg.color} ${cfg.bg} ${cfg.border}`}>
+                      {cfg.label}: {count}
+                    </span>
+                  ) : null;
+                })}
+                {crisisFlags.length === 0 && (
+                  <span className="text-xs text-emerald-600 font-semibold px-2.5 py-1 rounded-full border border-emerald-300 bg-emerald-50 dark:bg-emerald-950/30">
+                    No crisis signals detected
+                  </span>
+                )}
+              </div>
+
+              {crisisFlags.length > 0 && (
+                <div className="space-y-3">
+                  {crisisFlags.filter(f => !dismissedKeys.has(`${f.messageId}-${f.flagType}`)).map((flag) => (
+                    <CrisisCard
+                      key={`${flag.messageId}-${flag.flagType}`}
+                      flag={flag}
+                      onDismiss={(key) => setDismissedKeys(prev => new Set([...prev, key]))}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
     </div>

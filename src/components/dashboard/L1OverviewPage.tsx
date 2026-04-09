@@ -5,8 +5,7 @@ import { useNavigation } from "@/components/layout/DashboardShell";
 import { getBatchMetrics } from "@/lib/actions/batch-overview";
 import { getCouncilsWithStats } from "@/lib/actions/councils";
 import { InsightsPanel } from "./InsightsPanel";
-import { Users, GraduationCap, Target, ArrowRight, Shield, Headphones } from "lucide-react";
-import { BetaPill } from "@/components/ui/UpgradeModuleBanner";
+import { Users, GraduationCap, Target, ArrowRight } from "lucide-react";
 import { getAchievementStatus } from "@/lib/utils/achievement-status";
 
 interface CouncilStat {
@@ -147,34 +146,6 @@ export function L1OverviewPage() {
             </button>
           );
         })}
-      </div>
-
-      {/* HC Quick Tools */}
-      <div className="grid grid-cols-2 gap-3">
-        <button
-          onClick={() => setL1SubView("eavesdrop")}
-          className="flex items-center gap-3 px-4 py-3 rounded-xl border border-border bg-card hover:border-primary/50 hover:shadow-md transition-all text-left group"
-        >
-          <div className="p-2 rounded-lg bg-purple-500/10 shrink-0">
-            <Headphones className="h-4 w-4 text-purple-400" />
-          </div>
-          <div>
-            <div className="flex items-center gap-1"><p className="text-sm font-semibold text-foreground">Coaching Feed</p><BetaPill /></div>
-            <p className="text-xs text-muted-foreground group-hover:underline">Eavesdrop AI →</p>
-          </div>
-        </button>
-        <button
-          onClick={() => setL1SubView("security")}
-          className="flex items-center gap-3 px-4 py-3 rounded-xl border border-border bg-card hover:border-blue-500/50 hover:shadow-md transition-all text-left group"
-        >
-          <div className="p-2 rounded-lg bg-blue-500/10 shrink-0">
-            <Shield className="h-4 w-4 text-blue-400" />
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-foreground">Security Center</p>
-            <p className="text-xs text-muted-foreground group-hover:underline">Login logs · Threats →</p>
-          </div>
-        </button>
       </div>
 
       {/* AI Insights Panel */}

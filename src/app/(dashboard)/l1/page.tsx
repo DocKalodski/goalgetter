@@ -4,7 +4,7 @@ import { DashboardRouter } from "@/components/dashboard/DashboardRouter";
 
 export default async function L1Page() {
   const user = await getAuthUser();
-  if (!user || user.role !== "head_coach") {
+  if (!user || (user.role !== "head_coach" && user.role !== "facilitator")) {
     redirect("/l2");
   }
   return <DashboardRouter />;

@@ -25,7 +25,7 @@ export type WeekHistoryEntry = {
 
 // Get the coach's council(s) and IDs
 async function getCoachContext(userId: string, role?: string) {
-  let isFullView = role === "head_coach";
+  let isFullView = role === "head_coach" || role === "facilitator";
   if (role === "coach" && !isFullView) {
     const [u] = await db
       .select({ canViewAllCouncils: users.canViewAllCouncils })
@@ -70,7 +70,7 @@ async function getCoachContext(userId: string, role?: string) {
 
 export async function getCoachMetrics() {
   const user = await getAuthUser();
-  if (!user || (user.role !== "coach" && user.role !== "head_coach")) {
+  if (!user || (user.role !== "coach" && user.role !== "head_coach" && user.role !== "facilitator")) {
     throw new Error("Forbidden");
   }
 
@@ -240,7 +240,7 @@ export async function getCoachStudentsWithDetails() {
 // Used by PerformanceBanner dropdown + chart.
 export async function getTeamWeeklyHistory(): Promise<WeekHistoryEntry[]> {
   const user = await getAuthUser();
-  if (!user || (user.role !== "coach" && user.role !== "head_coach")) throw new Error("Forbidden");
+  if (!user || (user.role !== "coach" && user.role !== "head_coach" && user.role !== "facilitator")) throw new Error("Forbidden");
 
   const currentWeek = await getCurrentWeek();
   const [batchRow] = await db.select({ totalWeeks: batches.totalWeeks }).from(batches).limit(1);

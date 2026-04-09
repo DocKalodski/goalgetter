@@ -404,7 +404,8 @@ function computeDeclarationAlignment(
   }
 
   const keywords = [...new Set(alignKw(declaration).filter((w) => w.length > 5))];
-  if (!keywords.length) return { score: 100, missedTerms: [] };
+  // < 2 meaningful keywords = short motivational phrase, not scoreable; treat as aligned
+  if (keywords.length < 2) return { score: 100, missedTerms: [] };
   const missed = keywords.filter((k) => !combined.includes(k));
   return {
     score: Math.round(((keywords.length - missed.length) / keywords.length) * 100),
@@ -465,8 +466,8 @@ function Collapsible({
 
 // ─── Main Component ───────────────────────────────────────────────
 
-export function ActionPlannerTab({ studentId }: { studentId: string }) {
-  const { selectedGoalType, user, setAiCoachInitialMessage, setActiveL3Tab } = useNavigation();
+export function ActionPlannerTab({ studentId, readOnly }: { studentId: string; readOnly?: boolean }) {
+  const { selectedGoalType, user } = useNavigation();
   const [goals, setGoals] = useState<GoalData[]>([]);
   const [studentDeclaration, setStudentDeclaration] = useState<string | null>(null);
   const [activeGoal, setActiveGoal] = useState<string>(selectedGoalType);
@@ -537,9 +538,10 @@ export function ActionPlannerTab({ studentId }: { studentId: string }) {
   const [studentName, setStudentName] = useState<string>("");
 
   const canEdit =
-    user.role === "coach" || user.role === "head_coach" ||
+    !readOnly &&
+    (user.role === "coach" || user.role === "head_coach" ||
     (user.role === "student" && user.userId === studentId) ||
-    (user.role === "council_leader" && user.userId === studentId);
+    (user.role === "council_leader" && user.userId === studentId));
 
   const load = useCallback(async () => {
     try {
@@ -554,6 +556,7 @@ export function ActionPlannerTab({ studentId }: { studentId: string }) {
       setCurrentWeek(week);
       setSelectedWeek(week);
       setBatchStartDate(batchInfo.batchStartDate);
+      setTotalWeeks(batchInfo.totalWeeks ?? 8);
       setStudentDeclaration(alignment.declaration);
       if (detail?.name) setStudentName(detail.name);
     } catch (e) { console.error(e); }
@@ -906,31 +909,6 @@ export function ActionPlannerTab({ studentId }: { studentId: string }) {
     setActiveGoal(template.goalType);
   }
 
-  // ── Analyze with AI ───────────────────────────────────────────
-
-  function handleAnalyzeWithAI() {
-    const draft = editingSmarter ? smarterDraft : (() => {
-      const d: Record<string, string> = {};
-      for (const f of SMARTER_FIELDS) d[f.key as string] = (currentGoal?.[f.key] as string | null) || "";
-      return d;
-    })();
-    const msg = [
-      `Please review and analyze my current SMARTER goal:`,
-      ``,
-      `**Specific:** ${draft.specificDetails || "(not filled)"}`,
-      `**Measurable:** ${draft.measurableCriteria || "(not filled)"}`,
-      `**Attainable:** ${draft.achievableResources || "(not filled)"}`,
-      `**Risk:** ${draft.relevantAlignment || "(not filled)"}`,
-      `**Time-bound:** ${draft.endDate || "(not filled)"}`,
-      `**Exciting:** ${draft.excitingMotivation || "(not filled)"}`,
-      `**Rewarding:** ${draft.rewardingBenefits || "(not filled)"}`,
-      ``,
-      `Please evaluate the quality of each field, point out any weaknesses, and suggest improvements.`,
-    ].join("\n");
-    setAiCoachInitialMessage(msg);
-    setActiveL3Tab("ai-coach");
-  }
-
   // ── Render ────────────────────────────────────────────────────
 
   if (loading) return <div className="h-96 bg-muted animate-pulse rounded-xl" />;
@@ -955,6 +933,7 @@ export function ActionPlannerTab({ studentId }: { studentId: string }) {
         <GoalTemplateModal
           goalType={activeGoal as "enrollment" | "personal" | "professional"}
           wheelScores={wheelScores}
+          declarationText={studentDeclaration}
           onApply={applyTemplate}
           onClose={() => setShowTemplateModal(false)}
         />
@@ -1110,6 +1089,7 @@ export function ActionPlannerTab({ studentId }: { studentId: string }) {
         <GoalTemplateModal
           goalType={activeGoal as "enrollment" | "personal" | "professional"}
           wheelScores={wheelScores}
+          declarationText={studentDeclaration}
           onApply={applyTemplate}
           onClose={() => setShowTemplateModal(false)}
         />
@@ -1186,8 +1166,8 @@ export function ActionPlannerTab({ studentId }: { studentId: string }) {
           <Collapsible
             title="A · Draft Goal Statement"
             action={canEdit && !editingGoal ? (
-              <button onClick={() => { setGoalDraft(currentGoal.goalStatement); setValuesDraft(currentGoal.valuesDeclaration || ""); setEditingGoal(true); }} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors">
-                <Pencil className="h-3 w-3" /> Edit
+              <button onClick={() => { setGoalDraft(currentGoal.goalStatement); setValuesDraft(currentGoal.valuesDeclaration || ""); setEditingGoal(true); }} className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-md bg-muted border border-border text-foreground hover:bg-red-500/10 hover:text-red-500 hover:border-red-400/50 transition-colors">
+                <Pencil className="h-3.5 w-3.5" /> Edit
               </button>
             ) : undefined}
           >
@@ -1370,8 +1350,8 @@ export function ActionPlannerTab({ studentId }: { studentId: string }) {
                 </div>
               </button>
               {canEdit && !editingSmarter && (
-                <button onClick={startEditSmarter} className="p-1 text-muted-foreground hover:text-primary transition-colors">
-                  <Pencil className="h-3 w-3" />
+                <button onClick={startEditSmarter} className="p-1.5 rounded-md bg-muted border border-border text-red-500 hover:bg-red-500/10 hover:border-red-400/50 transition-colors">
+                  <Pencil className="h-3.5 w-3.5" />
                 </button>
               )}
             </div>
@@ -1620,13 +1600,6 @@ export function ActionPlannerTab({ studentId }: { studentId: string }) {
                     <ArrowRight className="h-3 w-3" />{savingToGoal ? "Exporting…" : "✓ Export to Results"}
                   </button>
                   <button onClick={() => { setStatementDraft(currentGoal.goalStatement || ""); setTestResults(null); }} className="text-xs px-3 py-1.5 rounded-lg bg-muted text-muted-foreground transition-colors">Reset</button>
-                  <button
-                    onClick={handleAnalyzeWithAI}
-                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-primary/30 text-primary hover:bg-primary/5 transition-colors w-full justify-center mt-1"
-                  >
-                    <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-primary/15 text-primary text-[8px] font-bold">AI</span>
-                    Analyze with AI Coach
-                  </button>
                 </div>
               )}
             </div>
@@ -1635,9 +1608,9 @@ export function ActionPlannerTab({ studentId }: { studentId: string }) {
 
         {/* ════ COLUMN 2: Milestone Planner ════ */}
         <div className="space-y-4">
-          <ColHeader step="2" title="12-Week Milestones" badge={
+          <ColHeader step="2" title={`${totalWeeks}-Week Milestones`} badge={
             milestonesWithContent > 0
-              ? <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">{milestonesWithContent}/12 set</span>
+              ? <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">{milestonesWithContent}/{totalWeeks} set</span>
               : <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">None yet</span>
           } />
 
@@ -1878,7 +1851,7 @@ export function ActionPlannerTab({ studentId }: { studentId: string }) {
             }
           >
             <div className="divide-y divide-border">
-              {Array.from({ length: 12 }, (_, i) => i + 1).map((week) => {
+              {Array.from({ length: totalWeeks }, (_, i) => i + 1).map((week) => {
                 const milestone = currentGoal.milestones.find((m) => m.weekNumber === week);
                 const isCurrent = week === currentWeek;
                 const isExpanded = expandedMilestone === week;
@@ -1897,8 +1870,8 @@ export function ActionPlannerTab({ studentId }: { studentId: string }) {
                       )}
                       <span className="text-xs text-muted-foreground truncate flex-1">{desc || "—"}</span>
                       {canEdit && (
-                        <button onClick={(e) => { e.stopPropagation(); setMilestoneDrafts((p) => ({ ...p, [week]: desc || "" })); setEditingMilestoneWeek(week); setExpandedMilestone(week); }} className="shrink-0 p-0.5 text-muted-foreground hover:text-primary transition-colors">
-                          <Pencil className="h-3 w-3" />
+                        <button onClick={(e) => { e.stopPropagation(); setMilestoneDrafts((p) => ({ ...p, [week]: desc || "" })); setEditingMilestoneWeek(week); setExpandedMilestone(week); }} className="shrink-0 p-1.5 rounded-md bg-muted border border-border text-red-500 hover:bg-red-500/10 hover:border-red-400/50 transition-colors">
+                          <Pencil className="h-3.5 w-3.5" />
                         </button>
                       )}
                     </button>
@@ -1937,8 +1910,8 @@ export function ActionPlannerTab({ studentId }: { studentId: string }) {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <ColHeader step="3" title="Weekly Actions" badge={
-              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${weeksWithActions === 12 ? "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20" : weeksWithActions > 0 ? "bg-primary/10 text-primary border border-primary/20" : "bg-muted text-muted-foreground"}`}>
-                {weeksWithActions}/12 weeks planned
+              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${weeksWithActions === totalWeeks ? "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20" : weeksWithActions > 0 ? "bg-primary/10 text-primary border border-primary/20" : "bg-muted text-muted-foreground"}`}>
+                {weeksWithActions}/{totalWeeks} weeks planned
               </span>
             } />
             <div className="flex items-center gap-1 bg-muted rounded-lg p-0.5">
@@ -1964,7 +1937,7 @@ export function ActionPlannerTab({ studentId }: { studentId: string }) {
                 onClick={() => setCalendarExpanded((v) => !v)}
                 className="w-full px-4 py-3 flex items-center justify-between hover:bg-muted/30 transition-colors"
               >
-                <span className="text-xs font-semibold text-primary uppercase tracking-wide">12-Week Calendar</span>
+                <span className="text-xs font-semibold text-primary uppercase tracking-wide">{totalWeeks}-Week Calendar</span>
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-muted-foreground">{activeGoal} · starts {new Date(batchStartDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
                   {calendarExpanded ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />}
@@ -2096,7 +2069,7 @@ export function ActionPlannerTab({ studentId }: { studentId: string }) {
               ) : (
                 <div className="space-y-1">
                   <p className="text-xs text-muted-foreground italic">No milestone set for Week {selectedWeek} yet.</p>
-                  <p className="text-xs text-muted-foreground">→ Go to <span className="font-medium text-primary">Step 2 (12-Week Milestones)</span> to generate or write your milestones first.</p>
+                  <p className="text-xs text-muted-foreground">→ Go to <span className="font-medium text-primary">Step 2 ({totalWeeks}-Week Milestones)</span> to generate or write your milestones first.</p>
                 </div>
               )}
             </div>

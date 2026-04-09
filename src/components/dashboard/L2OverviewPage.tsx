@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useNavigation } from "@/components/layout/DashboardShell";
 import { getCoachMetrics, getTeamWeeklyHistory } from "@/lib/actions/coach-overview";
 import type { WeekHistoryEntry } from "@/lib/actions/coach-overview";
+import { getPendingApprovalsCount } from "@/lib/actions/approvals";
 import { getCouncilsWithStats } from "@/lib/actions/councils";
 import { ManageProgramShell } from "./ManageProgramShell";
 import { getTargetStatus } from "@/lib/utils/week-targets";
@@ -13,12 +14,11 @@ import {
   GraduationCap,
   Crown,
   Settings2,
-  Headphones,
-  Shield,
   ChevronDown,
   ChevronUp,
+  MessageCircle,
 } from "lucide-react";
-import { BetaPill } from "@/components/ui/UpgradeModuleBanner";
+import { HcCoachChatPanel } from "./HcCoachChatPanel";
 
 
 interface CoachMetrics {
@@ -47,6 +47,7 @@ interface CouncilStat {
   id: string;
   name: string;
   theme: string | null;
+  coachId: string | null;
   coachName: string | null;
   adminCoachName: string | null;
   leaderName: string | null;
@@ -61,6 +62,7 @@ export function L2OverviewPage() {
     setCurrentPage,
     setSelectedCouncilId,
     setL1SubView,
+    setL2SubView,
     l1ManageOpen,
     setL1ManageOpen,
     user,
@@ -69,17 +71,21 @@ export function L2OverviewPage() {
   const [councils, setCouncils] = useState<CouncilStat[]>([]);
   const [weeklyHistory, setWeeklyHistory] = useState<WeekHistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hcChatOpen, setHcChatOpen] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
 
   const load = useCallback(async () => {
     try {
-      const [metricsData, councilsData, historyData] = await Promise.all([
+      const [metricsData, councilsData, historyData, pending] = await Promise.all([
         getCoachMetrics(),
         getCouncilsWithStats(),
         getTeamWeeklyHistory(),
+        getPendingApprovalsCount(),
       ]);
       setMetrics(metricsData);
       setCouncils(councilsData);
       setWeeklyHistory(historyData);
+      setPendingCount(pending);
     } catch (error) {
       console.error("Failed to load council overview:", error);
     } finally {
@@ -116,6 +122,7 @@ export function L2OverviewPage() {
   const currentWeek = metrics?.currentWeek ?? reportingWeek + 1;
   const batchStartDate = metrics?.batchStartDate ?? "2026-02-02";
   const isHeadCoach = user.role === "head_coach";
+  const isFacilitator = user.role === "facilitator";
 
   return (
     <div className="space-y-6">
@@ -123,23 +130,38 @@ export function L2OverviewPage() {
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-bold whitespace-nowrap">{isHeadCoach ? "Team Summary (Head Coach)" : "Council Summary (Coach)"}</h2>
+            <h2 className="text-2xl font-bold whitespace-nowrap">
+              {isHeadCoach ? "Team Summary (Head Coach)" : isFacilitator ? "Team Summary (Facilitator)" : "Council Summary (Coach)"}
+            </h2>
             <p className="text-muted-foreground">
-              {isHeadCoach ? "Manage councils and track group performance" : "Your council's performance overview"}
+              {isHeadCoach ? "Manage councils and track group performance" : isFacilitator ? "Read-only overview of all councils" : "Your council's performance overview"}
             </p>
           </div>
-          {isHeadCoach && (
-            <button
-              onClick={() => setL1ManageOpen(!l1ManageOpen)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors ${
-                l1ManageOpen ? "bg-primary text-primary-foreground" : "bg-primary/10 text-primary hover:bg-primary/20"
-              }`}
-            >
-              <Settings2 className="h-4 w-4" />
-              Manage
-              {l1ManageOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {user.role === "coach" && (
+              <button
+                onClick={() => setHcChatOpen(!hcChatOpen)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                  hcChatOpen ? "bg-amber-500 text-white" : "bg-amber-500/10 text-amber-600 hover:bg-amber-500/20"
+                }`}
+              >
+                <MessageCircle className="h-4 w-4" />
+                Ask Head Coach Chat
+              </button>
+            )}
+            {!isFacilitator && (
+              <button
+                onClick={() => setL1ManageOpen(!l1ManageOpen)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                  l1ManageOpen ? "bg-primary text-primary-foreground" : "bg-primary/10 text-primary hover:bg-primary/20"
+                }`}
+              >
+                <Settings2 className="h-4 w-4" />
+                Manage
+                {l1ManageOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Compact councils + students stats */}
@@ -163,8 +185,8 @@ export function L2OverviewPage() {
         </div>
       </div>
 
-      {/* HC Manage Panel */}
-      {isHeadCoach && l1ManageOpen && (
+      {/* Manage Panel */}
+      {l1ManageOpen && (
         <div className="bg-card border border-border rounded-xl p-4 space-y-4">
           {metrics && (
             <ManageProgramShell
@@ -173,25 +195,6 @@ export function L2OverviewPage() {
               onChanged={load}
             />
           )}
-          <div>
-            <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-3">HC Tools</p>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              <button
-                onClick={() => { setL1ManageOpen(false); setL1SubView("eavesdrop"); }}
-                className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-border bg-muted/30 hover:bg-muted hover:border-purple-400/40 transition-colors text-left"
-              >
-                <Headphones className="h-4 w-4 text-purple-400 shrink-0" />
-                <span className="text-sm font-medium">Eavesdrop AI</span><BetaPill />
-              </button>
-              <button
-                onClick={() => { setL1ManageOpen(false); setL1SubView("security"); }}
-                className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-border bg-muted/30 hover:bg-muted hover:border-blue-400/40 transition-colors text-left"
-              >
-                <Shield className="h-4 w-4 text-blue-400 shrink-0" />
-                <span className="text-sm font-medium">Security</span><BetaPill />
-              </button>
-            </div>
-          </div>
         </div>
       )}
 
@@ -293,6 +296,41 @@ export function L2OverviewPage() {
           )}
         </div>
       </div>
+
+      {/* Pending Approvals CTA — coaches only, at bottom of overview */}
+      {pendingCount > 0 && user.role === "coach" && (
+        <button
+          type="button"
+          onClick={() => setL2SubView("approvals")}
+          className="w-full flex items-center justify-between gap-4 p-4 rounded-xl border border-amber-400/40 bg-amber-500/8 hover:bg-amber-500/15 transition-colors text-left group"
+        >
+          <div className="flex items-center gap-3">
+            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-amber-500 text-white font-black text-sm shrink-0">
+              {pendingCount > 99 ? "99+" : pendingCount}
+            </span>
+            <div>
+              <p className="text-sm font-bold text-amber-700 dark:text-amber-400">
+                {pendingCount} item{pendingCount !== 1 ? "s" : ""} waiting for your approval
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Goals · Milestones · Declarations — tap to review
+              </p>
+            </div>
+          </div>
+          <span className="text-xs font-semibold text-amber-600 dark:text-amber-400 group-hover:underline shrink-0">
+            Review →
+          </span>
+        </button>
+      )}
+
+      {/* Coach → HC Chat Panel */}
+      {user.role === "coach" && hcChatOpen && (
+        <HcCoachChatPanel
+          coachId={user.userId}
+          coachName={user.name ?? user.email}
+          onClose={() => setHcChatOpen(false)}
+        />
+      )}
 
     </div>
   );

@@ -6,30 +6,42 @@ import { L1Dashboard } from "./L1Dashboard";
 import { L2CouncilDetail } from "./L2CouncilDetail";
 import { L3StudentDetail } from "./L3StudentDetail";
 import { ProfilePanel } from "./ProfilePanel";
+import { EssenceQualitiesPage } from "./EssenceQualitiesPage";
 
 export function DashboardRouter() {
   const { currentPage, user, selectedStudentId, setCurrentPage } = useNavigation();
 
-  // L3 with no student selected → go back to L2 (student rows are in L2)
+  const isPrivileged = user.role === "head_coach" || user.role === "coach";
+  const isFacilitator = user.role === "facilitator";
+
+  // L3 with no student selected → go back to L2
   useEffect(() => {
-    if (currentPage === "L3" && !selectedStudentId && (user.role === "head_coach" || user.role === "coach")) {
+    if (currentPage === "L3" && !selectedStudentId && isPrivileged) {
       setCurrentPage("L2");
     }
-  }, [currentPage, selectedStudentId, user.role, setCurrentPage]);
+    // Facilitator can never reach L3
+    if (currentPage === "L3" && isFacilitator) {
+      setCurrentPage("L1");
+    }
+  }, [currentPage, selectedStudentId, isPrivileged, isFacilitator, setCurrentPage]);
+
+  if (currentPage === "essence-qualities") {
+    return <EssenceQualitiesPage />;
+  }
 
   if (currentPage === "profile") {
     return <ProfilePanel />;
   }
 
-  if (currentPage === "L1" && (user.role === "head_coach" || user.role === "coach")) {
+  if (currentPage === "L1" && (isPrivileged || isFacilitator)) {
     return <L1Dashboard />;
   }
 
-  if (currentPage === "L2" && (user.role === "head_coach" || user.role === "coach")) {
+  if (currentPage === "L2" && (isPrivileged || isFacilitator)) {
     return <L2CouncilDetail />;
   }
 
-  if (currentPage === "L3" && (user.role === "head_coach" || user.role === "coach")) {
+  if (currentPage === "L3" && isPrivileged) {
     if (selectedStudentId) {
       return <L3StudentDetail />;
     }

@@ -4,7 +4,7 @@ import { jwtVerify } from "jose";
 
 const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET!);
 
-const publicPaths = ["/login", "/api/auth/login", "/beta-expired"];
+const publicPaths = ["/login", "/api/auth/login", "/beta-expired", "/beta2"];
 
 // LEAP 99 kill pill — access expires 2 days after program end (Jun 25 2026)
 const ACCESS_EXPIRY = new Date("2026-06-27T00:00:00.000Z");
@@ -25,7 +25,6 @@ export async function middleware(request: NextRequest) {
   // Check for access token
   const token = request.cookies.get("access_token")?.value;
   if (!token) {
-    // No token — if beta expired redirect to beta-expired, else login
     if (BETA_EXPIRY && new Date() > BETA_EXPIRY) {
       return NextResponse.redirect(new URL("/beta-expired", request.url));
     }
@@ -49,21 +48,23 @@ export async function middleware(request: NextRequest) {
 
     // Role-based route protection
     const canViewAll = payload.canViewAllCouncils === true;
-    if (pathname.startsWith("/l1") && role !== "head_coach" && role !== "developer" && !canViewAll) {
+    if (pathname.startsWith("/l1") && role !== "head_coach" && role !== "developer" && role !== "facilitator" && !canViewAll) {
       const redirect = role === "coach" ? "/l2" : "/l3";
       return NextResponse.redirect(new URL(redirect, request.url));
     }
-    if (
-      pathname.startsWith("/l2") &&
-      role !== "head_coach" &&
-      role !== "coach"
-    ) {
+    if (pathname.startsWith("/l2") && role !== "head_coach" && role !== "coach" && role !== "facilitator") {
       return NextResponse.redirect(new URL("/l3", request.url));
+    }
+    if (pathname.startsWith("/l3") && role === "facilitator") {
+      return NextResponse.redirect(new URL("/l1", request.url));
     }
 
     return NextResponse.next();
   } catch {
-    return NextResponse.redirect(new URL("/login", request.url));
+    // Bad/expired JWT — clear the cookie so the browser doesn't loop
+    const res = NextResponse.redirect(new URL("/login", request.url));
+    res.cookies.delete("access_token");
+    return res;
   }
 }
 

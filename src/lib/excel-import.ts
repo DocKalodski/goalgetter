@@ -151,7 +151,9 @@ export function parseStudentSheet(ws: XLSX.WorkSheet): ParsedStudent | null {
         for (let i = 0; i < 3; i++) {
           entry.mils[i].weekStart = toISO(r[0]);
           entry.mils[i].weekEnd   = toISO(r[2]);
-          entry.mils[i].cumulativePct = toPct(r[CUM_COL[i]]);
+          // Hard-lock W1=25, W2=37.5 per LEAP 99 official schedule
+          const rawPct = toPct(r[CUM_COL[i]]);
+          entry.mils[i].cumulativePct = currentWeek === 1 ? 25 : currentWeek === 2 ? 37.5 : rawPct;
           entry.mils[i].done          = isDone(r[DONE_COL[i]]);
         }
       }

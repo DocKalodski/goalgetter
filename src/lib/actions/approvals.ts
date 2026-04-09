@@ -7,12 +7,34 @@ import {
   declarations,
   weeklyMilestones,
   councils,
+  notifications,
 } from "@/lib/db/schema";
 import { getAuthUser, isHeadCoach,
 } from "@/lib/auth/jwt";
 import { eq, and, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { createId } from "@paralleldrive/cuid2";
+
+// ─── Helper: find coach userId for a student ──────────────────────────────────
+async function findCoachForStudent(studentId: string): Promise<string | null> {
+  const [student] = await db.select({ councilId: users.councilId }).from(users).where(eq(users.id, studentId)).limit(1);
+  if (!student?.councilId) return null;
+  const [council] = await db.select({ coachId: councils.coachId }).from(councils).where(eq(councils.id, student.councilId)).limit(1);
+  return council?.coachId ?? null;
+}
+
+// ─── Helper: notify coach of pending item ────────────────────────────────────
+async function notifyCoach(coachId: string, title: string, message: string) {
+  await db.insert(notifications).values({
+    id: createId(),
+    userId: coachId,
+    title,
+    message,
+    type: "council",
+    read: 0,
+    createdAt: new Date(),
+  });
+}
 
 // ─── Helper: Check if coach owns student's council ─────────────────────────
 
@@ -187,11 +209,91 @@ export async function approveGoal(
   return { success: true };
 }
 
+// ─── Student: Submit Goal for Coach Review ─────────────────────────────────
+
+export async function submitGoalForReview(goalId: string, note?: string) {
+  const user = await getAuthUser();
+  if (!user) throw new Error("Unauthorized");
+
+  const [goal] = await db.select().from(goals).where(eq(goals.id, goalId)).limit(1);
+  if (!goal) throw new Error("Goal not found");
+  if (goal.userId !== user.userId) throw new Error("Forbidden");
+
+  await db
+    .update(goals)
+    .set({
+      approvalStatus: "pending",
+      approvedBy: null,
+      approvedAt: null,
+      reviewNote: note || null,
+      updatedAt: new Date(),
+    })
+    .where(eq(goals.id, goalId));
+
+  // Ping coach
+  const coachId = await findCoachForStudent(user.userId);
+  if (coachId) {
+    const [student] = await db.select({ name: users.name }).from(users).where(eq(users.id, user.userId)).limit(1);
+    const label = goal.goalType.charAt(0).toUpperCase() + goal.goalType.slice(1);
+    await notifyCoach(coachId,
+      `⏳ ${label} Goal needs review`,
+      `${student?.name ?? "A student"} submitted their ${goal.goalType} goal for your approval.`
+    );
+  }
+
+  revalidatePath("/l3");
+  return { success: true };
+}
+
+// ─── Student: Submit Milestone for Coach Review ────────────────────────────
+
+export async function submitMilestoneForReview(milestoneId: string, note?: string) {
+  const user = await getAuthUser();
+  if (!user) throw new Error("Unauthorized");
+
+  const [milestone] = await db
+    .select()
+    .from(weeklyMilestones)
+    .where(eq(weeklyMilestones.id, milestoneId))
+    .limit(1);
+  if (!milestone) throw new Error("Milestone not found");
+
+  const [goal] = await db.select().from(goals).where(eq(goals.id, milestone.goalId)).limit(1);
+  if (!goal) throw new Error("Goal not found");
+  if (goal.userId !== user.userId) throw new Error("Forbidden");
+
+  await db
+    .update(weeklyMilestones)
+    .set({
+      approvalStatus: "pending",
+      approvedBy: null,
+      approvedAt: null,
+      reviewNote: note || null,
+      updatedAt: new Date(),
+    })
+    .where(eq(weeklyMilestones.id, milestoneId));
+
+  // Ping coach
+  const coachId = await findCoachForStudent(user.userId);
+  if (coachId) {
+    const [student] = await db.select({ name: users.name }).from(users).where(eq(users.id, user.userId)).limit(1);
+    const [parentGoal] = await db.select({ goalType: goals.goalType }).from(goals).where(eq(goals.id, milestone.goalId)).limit(1);
+    const label = parentGoal?.goalType?.charAt(0).toUpperCase() + (parentGoal?.goalType?.slice(1) ?? "");
+    await notifyCoach(coachId,
+      `⏳ Week ${milestone.weekNumber} Milestone needs review`,
+      `${student?.name ?? "A student"} submitted their Week ${milestone.weekNumber} ${label} milestone for your approval.`
+    );
+  }
+
+  revalidatePath("/l3");
+  return { success: true };
+}
+
 // ─── Get Pending Approvals for Coach ───────────────────────────────────────
 
 export async function getPendingApprovals() {
   const user = await getAuthUser();
-  if (!user || (user.role !== "coach" && user.role !== "head_coach")) {
+  if (!user || (user.role !== "coach" && user.role !== "head_coach" && user.role !== "facilitator")) {
     throw new Error("Forbidden");
   }
 
@@ -205,7 +307,7 @@ export async function getPendingApprovals() {
   }[] = [];
 
   if (user.role === "head_coach") {
-    // Pending coach approvals
+    // HC only approves coaches — nothing else
     const pendingCoaches = await db
       .select()
       .from(users)
@@ -222,6 +324,7 @@ export async function getPendingApprovals() {
         createdAt: coach.createdAt,
       });
     }
+    return results; // HC is done — no student items
   }
 
   // Find students in coach's council(s)
@@ -326,4 +429,73 @@ export async function getPendingApprovals() {
   }
 
   return results;
+}
+
+// ─── Coach: Get pending approvals count (lightweight, for header badge) ────────
+export async function getPendingApprovalsCount(): Promise<number> {
+  const items = await getPendingApprovals();
+  return items.length;
+}
+
+// ─── Coach: Approve all pending milestones for a goal ────────────────────────
+export async function approveAllPendingMilestones(goalId: string) {
+  const user = await getAuthUser();
+  if (!user || (user.role !== "coach" && user.role !== "head_coach")) {
+    throw new Error("Forbidden");
+  }
+  const pending = await db
+    .select({ id: weeklyMilestones.id })
+    .from(weeklyMilestones)
+    .where(and(eq(weeklyMilestones.goalId, goalId), eq(weeklyMilestones.approvalStatus, "pending")));
+
+  const now = new Date();
+  for (const m of pending) {
+    await db.update(weeklyMilestones).set({
+      approvalStatus: "approved", approvedBy: user.userId, approvedAt: now, updatedAt: now,
+    }).where(eq(weeklyMilestones.id, m.id));
+  }
+  revalidatePath("/l3");
+  return { success: true, count: pending.length };
+}
+
+// ─── Coach: Approve all pending goals for a student ──────────────────────────
+export async function approveAllPendingGoals(studentId: string) {
+  const user = await getAuthUser();
+  if (!user || (user.role !== "coach" && user.role !== "head_coach")) {
+    throw new Error("Forbidden");
+  }
+  const pending = await db
+    .select({ id: goals.id })
+    .from(goals)
+    .where(and(eq(goals.userId, studentId), eq(goals.approvalStatus, "pending")));
+
+  const now = new Date();
+  for (const g of pending) {
+    await db.update(goals).set({
+      approvalStatus: "approved", approvedBy: user.userId, approvedAt: now, updatedAt: now,
+    }).where(eq(goals.id, g.id));
+  }
+  revalidatePath("/l3");
+  return { success: true, count: pending.length };
+}
+
+// ─── Coach: Approve all pending declarations for a student ───────────────────
+export async function approveAllPendingDeclarations(studentId: string) {
+  const user = await getAuthUser();
+  if (!user || (user.role !== "coach" && user.role !== "head_coach")) {
+    throw new Error("Forbidden");
+  }
+  const pending = await db
+    .select({ id: declarations.id })
+    .from(declarations)
+    .where(and(eq(declarations.userId, studentId), eq(declarations.approvalStatus, "pending")));
+
+  const now = new Date();
+  for (const d of pending) {
+    await db.update(declarations).set({
+      approvalStatus: "approved", approvedBy: user.userId, approvedAt: now, updatedAt: now,
+    }).where(eq(declarations.id, d.id));
+  }
+  revalidatePath("/l3");
+  return { success: true, count: pending.length };
 }

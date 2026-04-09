@@ -45,6 +45,8 @@ interface AttendanceRow {
   callSat: string | null;
   callSun: string | null;
   eventAttendance: string | null; // JSON: { eventId: status }
+  lastEditedBy: string | null;
+  lastEditedRole: string | null;
 }
 
 const statusColors: Record<string, string> = {
@@ -76,14 +78,19 @@ function parseEventAttendance(raw: string | null): Record<string, string> {
 
 type AttendanceField = "meetingStatus" | "meetingMon" | "meetingTue" | "meetingWed" | "meetingThu" | "meetingFri" | "meetingSat" | "meetingSun" | "callMon" | "callTue" | "callWed" | "callThu" | "callFri" | "callSat" | "callSun";
 
-export function AttendanceTab({ studentId }: { studentId: string }) {
+export function AttendanceTab({ studentId, readOnly }: { studentId: string; readOnly?: boolean }) {
   const { user } = useNavigation();
-  const canEdit = user.role === "coach" || user.role === "head_coach";
+  // Student enters own attendance; coach can override; HC is always readOnly (passed from parent)
+  const canEdit = !readOnly && (
+    user.role === "coach" ||
+    (studentId === user.userId)
+  );
 
   const [attendance, setAttendance] = useState<AttendanceRow[]>([]);
   const [currentWeek, setCurrentWeek] = useState<number>(8);
   const [batchStartDate, setBatchStartDate] = useState<string>("2026-02-02");
   const [events, setEvents] = useState<ProgramEvent[]>([]);
+  const [totalWeeks, setTotalWeeks] = useState<number>(8);
   const [loading, setLoading] = useState(true);
   const [expandedWeeks, setExpandedWeeks] = useState<Set<number>>(new Set());
 
@@ -97,6 +104,7 @@ export function AttendanceTab({ studentId }: { studentId: string }) {
       setCurrentWeek(info.currentWeek);
       setBatchStartDate(info.batchStartDate);
       setEvents(info.events);
+      setTotalWeeks(info.totalWeeks);
       setExpandedWeeks(new Set([info.currentWeek]));
     } catch (error) {
       console.error("Failed to load attendance:", error);
@@ -156,8 +164,8 @@ export function AttendanceTab({ studentId }: { studentId: string }) {
     });
   };
 
-  // Build 12-week grid
-  const weeks = Array.from({ length: 12 }, (_, i) => {
+  // Build dynamic week grid
+  const weeks = Array.from({ length: totalWeeks }, (_, i) => {
     const week = i + 1;
     const row = attendance.find((a) => a.weekNumber === week);
     return {
@@ -178,6 +186,8 @@ export function AttendanceTab({ studentId }: { studentId: string }) {
       callSat: row?.callSat || "no_data",
       callSun: row?.callSun || "no_data",
       eventAttendance: row?.eventAttendance || null,
+      lastEditedBy: row?.lastEditedBy || null,
+      lastEditedRole: row?.lastEditedRole || null,
     };
   });
 
@@ -249,9 +259,6 @@ export function AttendanceTab({ studentId }: { studentId: string }) {
 
       {/* Combined weekly attendance */}
       <div className="bg-card rounded-xl border border-border overflow-hidden">
-        <h3 className="text-lg font-bold p-4 border-b border-border">
-          Weekly Attendance
-        </h3>
         <div className="divide-y divide-border">
           {weeks.map((week) => {
             const expanded = expandedWeeks.has(week.weekNumber);
@@ -278,7 +285,7 @@ export function AttendanceTab({ studentId }: { studentId: string }) {
                     <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
                   )}
                   <div className="flex flex-col min-w-0">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-base font-bold">Week {week.weekNumber}</span>
                       {isCurrent && (
                         <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary">
@@ -289,6 +296,12 @@ export function AttendanceTab({ studentId }: { studentId: string }) {
                         <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-yellow-400/10 text-yellow-600 flex items-center gap-0.5">
                           <Star className="h-3 w-3" />
                           {weekEvents.length} event{weekEvents.length > 1 ? "s" : ""}
+                        </span>
+                      )}
+                      {/* Coach-edited badge — only shown to students viewing their own attendance */}
+                      {week.lastEditedRole === "coach" && user.userId === studentId && (
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-blue-500/10 text-blue-500 border border-blue-400/30">
+                          Coach edited
                         </span>
                       )}
                     </div>

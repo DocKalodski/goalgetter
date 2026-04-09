@@ -222,6 +222,64 @@ export async function register(
   return { success: true };
 }
 
+// ─── Dev quick-login — passcode-gated, non-production only ──────────────────
+const DEV_PASSCODES: Record<string, string> = {
+  HC:        "beta_hc@leap99.test",
+  C:         "beta_coach@leap99.test",
+  S:         "beta_student@leap99.test",
+  F:         "beta_facilitator@leap99.test",
+  CK:        "coach.kinder@leap99.test",
+  CMG:       "coach.maryg@leap99.test",
+  CMAG:      "coach.magnificants@leap99.test",
+  SK:        "student.kinder@leap99.test",
+  SMG:       "student.maryg@leap99.test",
+  SMAG:      "student.magnificents@leap99.test",
+};
+
+export async function devLogin(passcode: string) {
+  const email = DEV_PASSCODES[passcode.toUpperCase()];
+  if (!email) return { success: false, error: "Invalid passcode" };
+
+  const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+  if (!user) return { success: false, error: "Beta account not found" };
+
+  const now = new Date();
+  const { ip, ua, deviceType, browser, os } = await getRequestMeta();
+  const sessionId = createId();
+  const sessionExpiry = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+  await db.insert(activeSessions).values({
+    id: sessionId, userId: user.id, ipAddress: ip, userAgent: ua,
+    deviceType, browser, os, lastSeenAt: now, createdAt: now, expiresAt: sessionExpiry,
+  });
+
+  await db.insert(loginAudits).values({
+    id: createId(), userId: user.id, email, ipAddress: ip, userAgent: ua,
+    deviceType, browser, os, status: "success", failReason: null,
+    sessionId, isSuspicious: 0, suspicionReason: null, createdAt: now,
+  });
+
+  const cookieStore = await cookies();
+  cookieStore.set("session_id", sessionId, {
+    httpOnly: true, secure: process.env.NODE_ENV === "production",
+    sameSite: "strict", path: "/", maxAge: 60 * 60 * 24 * 7,
+  });
+
+  const payload: JWTPayload = {
+    userId: user.id,
+    role: user.role as JWTPayload["role"],
+    canViewAllCouncils: user.canViewAllCouncils === 1,
+  };
+  const accessToken = await createAccessToken(payload);
+  const refreshToken = await createRefreshToken(payload);
+  await setAuthCookies(accessToken, refreshToken);
+
+  const destination = user.canViewAllCouncils === 1
+    ? "/l1"
+    : config.roles.loginDestinations[user.role as keyof typeof config.roles.loginDestinations];
+  redirect(destination);
+}
+
 export async function logout() {
   // Clean up active session
   const cookieStore = await cookies();

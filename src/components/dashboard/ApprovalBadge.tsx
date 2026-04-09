@@ -9,6 +9,7 @@ interface ApprovalBadgeProps {
   type: "milestone" | "declaration" | "goal";
   id: string;
   canApprove: boolean;
+  reviewNote?: string | null;
   onStatusChange?: () => void;
 }
 
@@ -17,6 +18,7 @@ export function ApprovalBadge({
   type,
   id,
   canApprove,
+  reviewNote,
   onStatusChange,
 }: ApprovalBadgeProps) {
   const [submitting, setSubmitting] = useState(false);
@@ -71,27 +73,35 @@ export function ApprovalBadge({
   // Pending
   if (canApprove) {
     return (
-      <div className="inline-flex items-center gap-1">
-        <span className="inline-flex items-center gap-1 text-xs text-amber-600 bg-amber-500/10 px-2 py-0.5 rounded-full">
-          <Clock className="h-3 w-3" />
-          Pending
-        </span>
-        <button
-          onClick={() => handleAction("approved")}
-          disabled={submitting}
-          className="ml-1 p-0.5 text-green-600 hover:bg-green-500/10 rounded disabled:opacity-50"
-          title="Approve"
-        >
-          <CheckCircle className="h-4 w-4" />
-        </button>
-        <button
-          onClick={() => handleAction("rejected")}
-          disabled={submitting}
-          className="p-0.5 text-destructive hover:bg-destructive/10 rounded disabled:opacity-50"
-          title="Reject"
-        >
-          <XCircle className="h-4 w-4" />
-        </button>
+      <div className="flex flex-col gap-1 items-start">
+        {reviewNote && (
+          <p className="text-xs text-muted-foreground italic bg-muted/50 px-2 py-1 rounded border border-border max-w-xs">
+            <span className="font-semibold not-italic text-foreground">Note: </span>
+            {reviewNote}
+          </p>
+        )}
+        <div className="inline-flex items-center gap-1">
+          <span className="inline-flex items-center gap-1 text-xs text-amber-600 bg-amber-500/10 px-2 py-0.5 rounded-full">
+            <Clock className="h-3 w-3" />
+            Pending
+          </span>
+          <button
+            onClick={() => handleAction("approved")}
+            disabled={submitting}
+            className="ml-1 p-0.5 text-green-600 hover:bg-green-500/10 rounded disabled:opacity-50"
+            title="Approve"
+          >
+            <CheckCircle className="h-4 w-4" />
+          </button>
+          <button
+            onClick={() => handleAction("rejected")}
+            disabled={submitting}
+            className="p-0.5 text-destructive hover:bg-destructive/10 rounded disabled:opacity-50"
+            title="Reject"
+          >
+            <XCircle className="h-4 w-4" />
+          </button>
+        </div>
       </div>
     );
   }

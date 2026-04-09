@@ -1299,7 +1299,7 @@ function GoalAlignmentCard({
           {canEdit && !isEditing && (
             <button
               onClick={() => { setDraftStatement(gs.goalStatement); setDraftValues(gs.values); setIsEditing(true); }}
-              className="text-muted-foreground hover:text-primary transition-colors"
+              className="p-1.5 rounded-md bg-muted border border-border text-red-500 hover:bg-red-500/10 hover:border-red-400/50 transition-colors"
               title="Edit goal"
             >
               <Pencil className="h-3.5 w-3.5" />
@@ -1674,9 +1674,9 @@ export function FeedbackTab({ studentId, view = "all" }: { studentId: string; vi
                   {canEdit && !editingDecl && (
                     <button
                       onClick={() => { setDeclDraft(alignment.declaration); setEditingDecl(true); }}
-                      className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors"
+                      className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-md bg-muted border border-border text-foreground hover:bg-red-500/10 hover:text-red-500 hover:border-red-400/50 transition-colors"
                     >
-                      <Pencil className="h-3 w-3" /> Edit
+                      <Pencil className="h-3.5 w-3.5" /> Edit
                     </button>
                   )}
                 </div>

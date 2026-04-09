@@ -46,6 +46,7 @@ export const users = sqliteTable("users", {
   canViewAllCouncils: integer("can_view_all_councils").notNull().default(0),
   permissions: text("permissions"), // JSON: string[] — HC-module access flags e.g. ["canAccessManage","canSeeEavesdrop"]
   wheelOfLife: text("wheel_of_life"), // JSON: Record<AreaKey, number>
+  pendingName: text("pending_name"),  // Student-proposed name change awaiting coach approval
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 });
@@ -97,6 +98,7 @@ export const goals = sqliteTable("goals", {
     .default("pending"),
   approvedBy: text("approved_by"),
   approvedAt: integer("approved_at", { mode: "timestamp" }),
+  reviewNote: text("review_note"),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 });
@@ -116,6 +118,8 @@ export const weeklyMilestones = sqliteTable("weekly_milestones", {
   actionSchedule: text("action_schedule"), // JSON: {"0": {"scheduledDate": "2026-02-03", "pendingDate": "2026-02-04"}}
   results: text("results"), // JSON: [{text: string, done: boolean}]
   cumulativePercentage: integer("cumulative_percentage").notNull().default(0),
+  supportNeeded: text("support_needed"),
+  isCompleted: integer("is_completed").notNull().default(0),
   approvalStatus: text("approval_status", {
     enum: ["pending", "approved", "rejected"],
   })
@@ -123,6 +127,7 @@ export const weeklyMilestones = sqliteTable("weekly_milestones", {
     .default("pending"),
   approvedBy: text("approved_by"),
   approvedAt: integer("approved_at", { mode: "timestamp" }),
+  reviewNote: text("review_note"),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 });
@@ -164,9 +169,40 @@ export const attendance = sqliteTable("attendance", {
   callSun: text("call_sun"),
   // JSON: {"eventId": "present"|"late"|"absent"|"no_data"} — per-event attendance
   eventAttendance: text("event_attendance"),
+  lastEditedBy: text("last_edited_by"),   // userId of last editor
+  lastEditedRole: text("last_edited_role"), // role of last editor
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 });
+
+// --- HC ↔ Coach Messages (head coach communicates with coach about council/students) ---
+export const hcCoachMessages = sqliteTable("hc_coach_messages", {
+  id: text("id").primaryKey(),
+  coachId: text("coach_id").notNull(),   // the coach in the thread
+  senderId: text("sender_id").notNull(),  // HC or coach userId
+  senderName: text("sender_name"),
+  senderRole: text("sender_role"),
+  content: text("content").notNull(),
+  readAt: integer("read_at", { mode: "timestamp" }),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+});
+
+export type HcCoachMessage = typeof hcCoachMessages.$inferSelect;
+
+// --- Direct Messages (coach ↔ student private chat) ---
+export const directMessages = sqliteTable("direct_messages", {
+  id: text("id").primaryKey(),
+  studentId: text("student_id").notNull(),   // always the student in the thread
+  senderId: text("sender_id").notNull(),      // coach or student userId
+  senderName: text("sender_name"),
+  senderRole: text("sender_role"),
+  content: text("content"),
+  imageUrl: text("image_url"),
+  readAt: integer("read_at", { mode: "timestamp" }),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+});
+
+export type DirectMessage = typeof directMessages.$inferSelect;
 
 // --- Chat Messages ---
 export const chatMessages = sqliteTable("chat_messages", {

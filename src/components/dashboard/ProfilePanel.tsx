@@ -157,9 +157,9 @@ export function ProfilePanel() {
           <div className="flex gap-2">
             <button
               onClick={() => { setEditMode(true); setError(null); setSuccess(null); }}
-              className="flex items-center gap-1 px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground border border-border rounded-lg hover:bg-muted transition-colors"
+              className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-md bg-muted border border-border text-foreground hover:bg-red-500/10 hover:text-red-500 hover:border-red-400/50 transition-colors"
             >
-              <Pencil className="h-3 w-3" />
+              <Pencil className="h-3.5 w-3.5" />
               Edit
             </button>
             <button

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { Mic, MicOff, ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
+import { Mic, MicOff, ChevronDown, ChevronUp } from "lucide-react";
 import { createCoachSession, updateSessionTranscript } from "@/lib/actions/coach-sessions";
 import { useNavigation } from "@/components/layout/DashboardShell";
 
@@ -11,7 +11,7 @@ interface AICoachQuickBarProps {
 }
 
 export function AICoachQuickBar({ students, weekNumber }: AICoachQuickBarProps) {
-  const { setSelectedStudentId, setActiveL3Tab, setCurrentPage } = useNavigation();
+  const { setSelectedStudentId, setCurrentPage } = useNavigation();
   const [expanded, setExpanded] = useState(false);
   const [sessionType, setSessionType] = useState("meeting");
   const [isRecording, setIsRecording] = useState(false);
@@ -71,14 +71,6 @@ export function AICoachQuickBar({ students, weekNumber }: AICoachQuickBarProps) 
     setIsRecording(false);
     if (sessionId && transcriptRef.current) {
       await updateSessionTranscript(sessionId, transcriptRef.current);
-    }
-  }
-
-  function openFullAICoach() {
-    if (activeStudentId) {
-      setSelectedStudentId(activeStudentId);
-      setActiveL3Tab("ai-coach");
-      setCurrentPage("L3");
     }
   }
 
@@ -178,14 +170,6 @@ export function AICoachQuickBar({ students, weekNumber }: AICoachQuickBarProps) 
         </div>
       )}
 
-      {/* Open full AI Coach */}
-      <button
-        onClick={openFullAICoach}
-        className="flex items-center gap-1.5 text-xs text-primary hover:underline font-semibold"
-      >
-        <ExternalLink className="h-3.5 w-3.5" />
-        Open Full AI Coach →
-      </button>
     </div>
   );
 }

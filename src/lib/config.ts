@@ -24,7 +24,7 @@ export const config = {
       coach: "/l2",
       council_leader: "/l3",
       student: "/l3",
-      facilitator: "/l3",
+      facilitator: "/l1",
     } as const,
   },
 } as const;

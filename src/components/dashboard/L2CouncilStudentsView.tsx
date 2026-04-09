@@ -5,12 +5,13 @@ import { useNavigation } from "@/components/layout/DashboardShell";
 import { getCouncilStudents, getCouncilList, getUnassignedStudents, assignStudentsToCouncil, removeStudentFromCouncil } from "@/lib/actions/councils";
 import { getBatchWeekInfo } from "@/lib/actions/attendance";
 import { updateDeclarationForStudent } from "@/lib/actions/alignment";
-import { ArrowLeft, UserPlus, Pencil, Check, X, Search, Trash2 } from "lucide-react";
+import { AlertTriangle, ArrowLeft, UserPlus, Pencil, Check, X, Search, Trash2, MessageCircle, Upload } from "lucide-react";
 import { AddStudentPanel } from "./AddStudentPanel";
 import { PerformanceBanner } from "./PerformanceBanner";
 import { WeeklyReportPanel } from "./WeeklyReportPanel";
 import { BatchPPScorecard } from "./BatchPPScorecard";
 import { AssignExistingPanel } from "./AssignExistingPanel";
+import { HcCoachChatPanel } from "./HcCoachChatPanel";
 import { Star } from "lucide-react";
 
 interface StudentRow {
@@ -18,6 +19,7 @@ interface StudentRow {
   name: string | null;
   email: string;
   declaration: string | null;
+  declarationApprovalStatus: string | null;
   enrollmentProgress: number;
   personalProgress: number;
   professionalProgress: number;
@@ -29,6 +31,8 @@ interface StudentRow {
   professionalCurrentWeek: number;
   weeklyMeetingAttendance: Record<number, number>;
   weeklyCallAttendance: Record<number, number>;
+  unreadDmCount: number;
+  hasSupportNeeded: boolean;
 }
 
 interface CouncilTab {
@@ -50,6 +54,9 @@ export function L2CouncilStudentsView() {
   const [councils, setCouncils] = useState<CouncilTab[]>([]);
   const [students, setStudents] = useState<StudentRow[]>([]);
   const [councilName, setCouncilName] = useState("");
+  const [councilCoachId, setCouncilCoachId] = useState<string | null>(null);
+  const [councilCoachName, setCouncilCoachName] = useState<string | null>(null);
+  const [hcChatOpen, setHcChatOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showAddStudent, setShowAddStudent] = useState(false);
   const [showAssignExisting, setShowAssignExisting] = useState(false);
@@ -66,6 +73,11 @@ export function L2CouncilStudentsView() {
   const [declDraft, setDeclDraft] = useState("");
   const [savingDecl, setSavingDecl] = useState(false);
 
+  // APA import
+  const [importingId, setImportingId] = useState<string | null>(null);
+  const [importResult, setImportResult] = useState<{ id: string; msg: string; ok: boolean } | null>(null);
+  const [pendingImport, setPendingImport] = useState<{ id: string; studentName: string; file: File } | null>(null);
+
   // Load council list once
   useEffect(() => {
     getCouncilList().then(setCouncils).catch(console.error);
@@ -80,6 +92,8 @@ export function L2CouncilStudentsView() {
       ]);
       setStudents(data.students);
       setCouncilName(data.councilName);
+      setCouncilCoachId(data.coachId);
+      setCouncilCoachName(data.coachName);
       setWeekInfo({ currentWeek: info.currentWeek, reportingWeek: info.reportingWeek, batchStartDate: info.batchStartDate, weeklyTargets: info.weeklyTargets });
     } catch (error) {
       console.error("Failed to load students:", error);
@@ -92,17 +106,28 @@ export function L2CouncilStudentsView() {
     loadStudents();
   }, [loadStudents]);
 
+  const isFacilitator = user.role === "facilitator";
+
   function handleGoalClick(
     studentId: string,
     goalType: "enrollment" | "personal" | "professional"
   ) {
+    if (isFacilitator) return;
     setSelectedStudentId(studentId);
     setSelectedGoalType(goalType);
     setActiveL3Tab("goals");
     setCurrentPage("L3");
   }
 
+  function handleChatClick(studentId: string) {
+    if (isFacilitator) return;
+    setSelectedStudentId(studentId);
+    setActiveL3Tab("ask-me-chat");
+    setCurrentPage("L3");
+  }
+
   function handleAttendanceClick(studentId: string) {
+    if (isFacilitator) return;
     setSelectedStudentId(studentId);
     setActiveL3Tab("attendance");
     setCurrentPage("L3");
@@ -130,6 +155,31 @@ export function L2CouncilStudentsView() {
     }
   }
 
+  async function handleApaUpload(studentId: string, file: File) {
+    setImportingId(studentId);
+    setImportResult(null);
+    try {
+      const text = await file.text();
+      const apaData = JSON.parse(text);
+      const res = await fetch("/api/import/apa", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ studentId, apaData }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setImportResult({ id: studentId, msg: data.message, ok: true });
+        loadStudents();
+      } else {
+        setImportResult({ id: studentId, msg: data.error || "Import failed", ok: false });
+      }
+    } catch (e) {
+      setImportResult({ id: studentId, msg: e instanceof Error ? e.message : "Invalid JSON file", ok: false });
+    } finally {
+      setImportingId(null);
+    }
+  }
+
   async function handleRemoveStudent(studentId: string, studentName: string) {
     if (!confirm(`Remove ${studentName} from this council? They can be re-assigned later.`)) return;
     setRemovingId(studentId);
@@ -142,7 +192,7 @@ export function L2CouncilStudentsView() {
   }
 
   const canAddStudents = user.role === "coach" || user.role === "head_coach";
-  const canEditDecl = user.role === "coach" || user.role === "head_coach";
+  const canEditDecl = user.role === "coach"; // HC is view-only — coach owns declarations
   const [showBatchPP, setShowBatchPP] = useState(false);
 
   return (
@@ -159,13 +209,13 @@ export function L2CouncilStudentsView() {
       {/* Page title — compact single row */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-3 min-w-0">
-          {(user.role === "head_coach" || user.role === "coach") && (
+          {(user.role === "head_coach" || user.role === "facilitator") && (
             <button
               onClick={() => setCurrentPage("L1")}
               className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-full bg-muted hover:bg-muted/70 border border-border transition-colors shrink-0"
             >
               <ArrowLeft className="h-3 w-3" />
-              {user.role === "head_coach" ? "Team Summary" : "Back"}
+              Team Summary
             </button>
           )}
           <div className="min-w-0">
@@ -199,24 +249,44 @@ export function L2CouncilStudentsView() {
 
       <div className="flex items-center justify-between flex-wrap gap-2">
         <p className="text-xs text-muted-foreground">{students.length} student{students.length !== 1 ? "s" : ""} in council</p>
-        {canAddStudents && (
-          <div className="flex gap-2">
+        <div className="flex gap-2">
+          {user.role === "head_coach" && councilCoachId && (
             <button
-              onClick={() => { setShowAssignExisting((v) => !v); setShowAddStudent(false); }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${showAssignExisting ? "bg-primary text-primary-foreground" : "bg-primary/10 text-primary hover:bg-primary/20"}`}
+              onClick={() => setHcChatOpen((v) => !v)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${hcChatOpen ? "bg-amber-500 text-white" : "bg-amber-500/10 text-amber-600 hover:bg-amber-500/20"}`}
             >
-              <Search className="h-3.5 w-3.5" />
-              Assign Existing
+              <MessageCircle className="h-3.5 w-3.5" />
+              Ask Coach Chat
             </button>
+          )}
+          {user.role === "coach" && (
             <button
-              onClick={() => { setShowAddStudent((v) => !v); setShowAssignExisting(false); }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${showAddStudent ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}
+              onClick={() => setHcChatOpen((v) => !v)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${hcChatOpen ? "bg-amber-500 text-white" : "bg-amber-500/10 text-amber-600 hover:bg-amber-500/20"}`}
             >
-              <UserPlus className="h-3.5 w-3.5" />
-              New Student
+              <MessageCircle className="h-3.5 w-3.5" />
+              Ask Head Coach Chat
             </button>
-          </div>
-        )}
+          )}
+          {canAddStudents && (
+            <>
+              <button
+                onClick={() => { setShowAssignExisting((v) => !v); setShowAddStudent(false); }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${showAssignExisting ? "bg-primary text-primary-foreground" : "bg-primary/10 text-primary hover:bg-primary/20"}`}
+              >
+                <Search className="h-3.5 w-3.5" />
+                Assign Existing
+              </button>
+              <button
+                onClick={() => { setShowAddStudent((v) => !v); setShowAssignExisting(false); }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${showAddStudent ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}
+              >
+                <UserPlus className="h-3.5 w-3.5" />
+                New Student
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Performance Banner */}
@@ -290,22 +360,79 @@ export function L2CouncilStudentsView() {
                     <td className="px-5 py-5 max-w-[280px]">
                       <div className="flex items-center gap-2 group">
                         <div
-                          className="flex-1 text-base font-bold cursor-pointer hover:text-primary transition-colors leading-tight"
+                          className="flex-1 text-base font-bold cursor-pointer hover:text-primary transition-colors leading-tight flex items-center gap-2"
                           onClick={() => handleGoalClick(student.id, "enrollment")}
                         >
                           {student.name || student.email}
+                          {student.unreadDmCount > 0 && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleChatClick(student.id); }}
+                              className="inline-flex items-center justify-center gap-1 h-6 min-w-[28px] px-2 rounded-full bg-red-600 text-white text-xs font-bold leading-none hover:bg-red-700 transition-colors shadow-md ring-2 ring-red-400/50"
+                              title={`${student.unreadDmCount} unread message${student.unreadDmCount > 1 ? "s" : ""} — click to open chat`}
+                            >
+                              💬 {student.unreadDmCount}
+                            </button>
+                          )}
+                          {student.hasSupportNeeded && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleGoalClick(student.id, "enrollment"); }}
+                              className="inline-flex items-center justify-center gap-1 h-6 px-2 rounded-full bg-amber-500 text-white text-xs font-bold leading-none hover:bg-amber-600 transition-colors shadow-md ring-2 ring-amber-400/50"
+                              title="Student needs support this week — click to view"
+                            >
+                              🚨 Help
+                            </button>
+                          )}
                         </div>
                         {canAddStudents && (
-                          <button
-                            onClick={() => handleRemoveStudent(student.id, student.name || student.email)}
-                            disabled={removingId === student.id}
-                            title="Remove from council"
-                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-destructive/10 hover:text-destructive text-muted-foreground disabled:opacity-30"
-                          >
-                            {removingId === student.id ? <span className="text-xs">…</span> : <Trash2 className="h-3.5 w-3.5" />}
-                          </button>
+                          <>
+                            <label
+                              title="Upload APA Goals (JSON)"
+                              className={`opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded cursor-pointer hover:bg-primary/10 hover:text-primary text-muted-foreground ${importingId === student.id ? "opacity-50 pointer-events-none" : ""}`}
+                            >
+                              {importingId === student.id ? <span className="text-xs">…</span> : <Upload className="h-3.5 w-3.5" />}
+                              <input
+                                type="file"
+                                accept=".json"
+                                className="hidden"
+                                onChange={(e) => {
+                                  const f = e.target.files?.[0];
+                                  if (f) setPendingImport({ id: student.id, studentName: student.name || student.email, file: f });
+                                  e.target.value = "";
+                                }}
+                              />
+                            </label>
+                            <button
+                              onClick={() => handleRemoveStudent(student.id, student.name || student.email)}
+                              disabled={removingId === student.id}
+                              title="Remove from council"
+                              className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-destructive/10 hover:text-destructive text-muted-foreground disabled:opacity-30"
+                            >
+                              {removingId === student.id ? <span className="text-xs">…</span> : <Trash2 className="h-3.5 w-3.5" />}
+                            </button>
+                          </>
                         )}
                       </div>
+                      {pendingImport?.id === student.id && (
+                        <div className="mt-1 flex items-center gap-2 text-xs px-2 py-1.5 rounded bg-amber-500/10 border border-amber-500/20">
+                          <AlertTriangle className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                          <span className="text-amber-700 dark:text-amber-400 flex-1">
+                            Overwrite <strong>{pendingImport.studentName}&apos;s</strong> goals with <strong>{pendingImport.file.name}</strong>?
+                          </span>
+                          <button
+                            onClick={() => { handleApaUpload(pendingImport.id, pendingImport.file); setPendingImport(null); }}
+                            className="px-2 py-0.5 font-semibold bg-amber-500 text-white rounded hover:bg-amber-600 transition-colors shrink-0"
+                          >
+                            Overwrite
+                          </button>
+                          <button onClick={() => setPendingImport(null)} className="text-muted-foreground hover:text-foreground shrink-0">Cancel</button>
+                        </div>
+                      )}
+                      {importResult?.id === student.id && (
+                        <div className={`mt-1 flex items-center justify-between text-xs px-2 py-1 rounded ${importResult.ok ? "bg-green-500/10 text-green-600" : "bg-destructive/10 text-destructive"}`}>
+                          <span>{importResult.msg}</span>
+                          <button onClick={() => setImportResult(null)} className="ml-1 opacity-60 hover:opacity-100"><X className="h-3 w-3" /></button>
+                        </div>
+                      )}
 
                       {editingDecl === student.id ? (
                         <div className="mt-2 space-y-2" onClick={(e) => e.stopPropagation()}>
@@ -335,15 +462,27 @@ export function L2CouncilStudentsView() {
                         </div>
                       ) : (
                         <div className="flex items-start gap-2 mt-1 group">
-                          <p className={`flex-1 text-xs leading-relaxed line-clamp-2 ${student.declaration ? "text-muted-foreground" : "text-muted-foreground/40 italic"}`}>
-                            {student.declaration || "No declaration"}
+                          {student.declaration && student.declarationApprovalStatus && (
+                            <span
+                              title={`Declaration: ${student.declarationApprovalStatus}`}
+                              className={`mt-1 shrink-0 w-2 h-2 rounded-full ${
+                                student.declarationApprovalStatus === "approved"
+                                  ? "bg-emerald-500"
+                                  : student.declarationApprovalStatus === "rejected"
+                                  ? "bg-red-500"
+                                  : "bg-amber-400"
+                              }`}
+                            />
+                          )}
+                          <p className={`flex-1 text-xs italic leading-relaxed line-clamp-2 ${student.declaration ? "text-muted-foreground" : "text-muted-foreground/40"}`}>
+                            {student.declaration ? `"${student.declaration}"` : "No declaration"}
                           </p>
                           {canEditDecl && (
                             <button
                               onClick={(e) => { e.stopPropagation(); startEditDecl(student); }}
-                              className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-md hover:bg-muted"
+                              className="shrink-0 opacity-0 group-hover:opacity-100 p-1.5 rounded-md bg-muted border border-border text-red-500 hover:bg-red-500/10 hover:border-red-400/50 transition-colors"
                             >
-                              <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                              <Pencil className="h-3.5 w-3.5" />
                             </button>
                           )}
                         </div>
@@ -486,6 +625,24 @@ export function L2CouncilStudentsView() {
             </table>
           </div>
         </div>
+      )}
+
+      {/* Coach → HC Chat Panel */}
+      {user.role === "coach" && hcChatOpen && (
+        <HcCoachChatPanel
+          coachId={user.userId}
+          coachName={user.name ?? user.email}
+          onClose={() => setHcChatOpen(false)}
+        />
+      )}
+
+      {/* HC → Coach Chat Panel */}
+      {user.role === "head_coach" && hcChatOpen && councilCoachId && (
+        <HcCoachChatPanel
+          coachId={councilCoachId}
+          coachName={councilCoachName || "Coach"}
+          onClose={() => setHcChatOpen(false)}
+        />
       )}
 
       {/* Weekly Report Panel — coaches only */}

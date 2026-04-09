@@ -35,6 +35,7 @@ export interface GoalTemplate {
   safetyNote?: string;
   questions: TemplateQuestion[];
   smarter: (a: Record<string, string>) => {
+    goalStatement?: string;      // optional full sentence — overrides assembled preview
     specificDetails: string;
     measurableCriteria: string;
     achievableResources: string;
@@ -47,13 +48,28 @@ export interface GoalTemplate {
 }
 
 // ── Week-target defaults (LEAP 99 schedule) ───────────────────────────────────
-const WK_PCT = [0, 10, 20, 35, 50, 65, 80, 100];
+const WK_PCT = [5, 15, 25, 38, 52, 70, 90, 100];
 
 // ── Day-shorthand ─────────────────────────────────────────────────────────────
 const MON_FRI = [0, 1, 2, 3, 4];
 const DAILY   = [0, 1, 2, 3, 4, 5, 6];
 const SUN     = [6];
 const MON     = [0];
+const SAT     = [5];
+
+// ── Dynamic day parser ────────────────────────────────────────────────────────
+function parseDays(commitDays?: string): number[] {
+  if (!commitDays) return MON_FRI;
+  const dayMap: Record<string, number> = { Mon:0, Tue:1, Wed:2, Thu:3, Fri:4, Sat:5, Sun:6 };
+  const parsed = commitDays.split(",").map(d => dayMap[d.trim()]).filter((n): n is number => n !== undefined);
+  return parsed.length > 0 ? parsed : MON_FRI;
+}
+
+// Estimated conversations per day based on hours committed (~3 convos/hour)
+function convosPerDay(hoursPerDay?: string): number {
+  const h = parseFloat(hoursPerDay || "1");
+  return Math.max(3, Math.round(h * 3));
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ENROLLMENT — Standard (1 FLEX + 1 ALC)
@@ -65,59 +81,205 @@ const enrollmentStandard: GoalTemplate = {
   name: "Enroll 1 FLEX + 1 ALC Client",
   description: "Standard enrollment goal: 1 FLEX client (May sessions) + 1 ALC student (June sessions) through daily outreach.",
   questions: [
-    { id: "flexTarget",  label: "FLEX clients to enroll",        type: "number",  placeholder: "1",          defaultValue: "1" },
-    { id: "alcTarget",   label: "ALC students to enroll",        type: "number",  placeholder: "1",          defaultValue: "1" },
-    { id: "currentCount",label: "Currently enrolled (total)",    type: "number",  placeholder: "0",          defaultValue: "0" },
-    { id: "channel",     label: "Primary outreach channel",      type: "multiselect",  options: ["referrals","social media","calls","combination","other"], defaultValue: "referrals" },
-    { id: "essence",     label: "Essence quality to embody in enrollment", type: "multiselect",
-      options: ["authentic","generous","service-oriented","abundant","courageous","committed","bold","joyful","patient","warm","inspired","other"], defaultValue: "authentic",
-      hint: "This becomes the soul of your goal — how you show up in every conversation." },
+    { id: "flexTarget",            label: "FLEX clients to enroll",                  type: "number",      placeholder: "1",           defaultValue: "1" },
+    { id: "alcTarget",             label: "ALC students to enroll",                  type: "number",      placeholder: "1",           defaultValue: "1" },
+    { id: "currentCount",          label: "Currently enrolled (total)",              type: "number",      placeholder: "0",           defaultValue: "0" },
+    { id: "warmNetworkSize",       label: "Size of your warm network (people)",      type: "number",      placeholder: "50",          defaultValue: "50",
+      hint: "How many people do you already know — prospects or people who can refer?" },
+    { id: "commitDays",            label: "Your active commitment days",             type: "multiselect", options: ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"], defaultValue: "Mon,Tue,Wed,Thu,Fri",
+      hint: "These days power all your regular action steps — outreach, follow-ups, check-ins, prep." },
+    { id: "hoursPerDay",           label: "Hours per day for active goal work",      type: "number",      placeholder: "1",           defaultValue: "1",
+      hint: "Outreach + follow-ups + prep combined. 1 hour ≈ 3 conversations." },
+    { id: "outreachTimeBlock",     label: "When is your dedicated work block?",      type: "select",      options: ["morning","midday","evening","morning + evening"], defaultValue: "morning",
+      hint: "Lock a specific block so your goal work is never squeezed out by the day." },
+    { id: "channel",               label: "Primary outreach channel",                type: "multiselect", options: ["referrals","social media","calls","combination","other"], defaultValue: "referrals" },
+    { id: "biggestObstacle",       label: "Biggest obstacle to enrolling",           type: "multiselect", options: ["fear of rejection","finding time","don't know what to say","small warm network","following up consistently","other"], defaultValue: "fear of rejection",
+      hint: "Name it so your action plan tackles it head-on." },
+    { id: "accountabilityPartner", label: "Accountability partner name (optional)",  type: "text",        placeholder: "e.g., Coach Ana",
+      hint: "This person checks in with you on your commit days." },
+    { id: "essence",               label: "3 essence qualities to embody (pick 3)",   type: "multiselect",
+      options: ["loving","courageous","committed","trusting","vulnerable","responsible","worthy","grateful","passionate","joyful","authentic","caring","compassionate","powerful","present","other"], defaultValue: "loving,committed,courageous",
+      hint: "LEAP coaches always embody exactly 3 qualities. These 3 become the soul of every conversation." },
   ],
-  smarter: (a) => ({
-    specificDetails: `Enroll ${a.flexTarget || 1} FLEX client (May sessions @ Abenson HQ Muñoz May 9–10 · SMX Aura May 16–17) + ${a.alcTarget || 1} ALC student (June sessions @ SMX Aura Jun 5–7 · Jun 12–14) through daily ${a.channel || "referral"} outreach; showing up as ${a.essence || "authentic"} in every conversation`,
-    measurableCriteria: `${a.flexTarget || 1} FLEX enrolled by Wk 4; ${a.alcTarget || 1} ALC enrolled by Wk 5; track daily conversations → discovery calls → proposals → closes; logged weekly in GoalGetter`,
-    achievableResources: `Warm network available; starting from ${a.currentCount || 0} enrolled; ${a.channel || "referral"} system and pitch scripts built in Wk 1; LEAP 99 calendar as urgency anchors; accountability coach weekly`,
-    relevantAlignment: `I have never consistently enrolled clients through my own outreach system — building this habit and hitting ${parseInt(a.flexTarget || "1") + parseInt(a.alcTarget || "1")} paid clients is new territory that goes beyond my comfort zone`,
-    endDate: "June 19, 2026 (Friday before Graduation)",
-    excitingMotivation: `Being ${a.essence || "authentic"} and serving future clients the way I wish someone had served me — proving that my coaching business is real and that people trust me enough to invest; the look on my first client's face at Graduation`,
-    rewardingBenefits: `${parseInt(a.flexTarget || "1") + parseInt(a.alcTarget || "1")} paying clients active; business model proven; recurring income; legacy clients for LEAP 100; living as the ${a.essence || "authentic"} person I committed to be`,
-  }),
-  milestones: (a) => [
-    { weekNumber:1, cumulativePercentage:WK_PCT[0],
-      description:`Build outreach system: 50-person warm list, FLEX + ALC pitch scripts, outreach schedule locked, GoalGetter calendar confirmed as urgency tool`,
-      actions:[{text:"Build warm list of 50+ prospects (name, contact, relationship)",days:MON_FRI},{text:`Draft ${a.channel || "referral"} outreach script — FLEX pitch + ALC pitch`,days:[1]},{text:"Book 5 initial invitation conversations for Wk 2",days:[3,4]},{text:`Lock daily outreach schedule in GoalGetter; embody ${a.essence || "authentic"} in every message`,days:MON}],
-      results:[{text:`50-person warm list complete`},{text:`Pitch scripts for FLEX (May 9–10 Abenson; May 16–17 SMX) + ALC (Jun 5–7; Jun 12–14 SMX) ready`}] },
-    { weekNumber:2, cumulativePercentage:WK_PCT[1],
-      description:`Execute outreach: 20 conversations, 5 discovery calls booked; FLEX 298 (May 9–10 Abenson HQ, Muñoz) as urgency anchor`,
-      actions:[{text:"Send 5+ outreach messages daily (calls/messages/in-person)",days:MON_FRI},{text:"Conduct 5 discovery calls; document objections + responses",days:[1,2,3,4]},{text:`FLEX 298 (May 9–10 Abenson Muñoz) — invite warm prospects; use event as urgency`,days:[5]},{text:`Log all conversations in tracker; rate own ${a.essence || "authentic"} presence 1-10`,days:SUN}],
-      results:[{text:"20+ conversations completed"},{text:"5+ discovery calls held"},{text:"2+ FLEX proposals sent"}] },
-    { weekNumber:3, cumulativePercentage:WK_PCT[2],
-      description:`5 discovery calls complete; 2+ FLEX proposals sent; FLEX 299 (May 16–17 SMX Aura) + 1st Workshop May 17 — leverage event energy`,
-      actions:[{text:"Follow up all Wk 2 proposals — send 2 new FLEX proposals",days:MON_FRI},{text:"FLEX 299 (May 16–17 SMX Aura) — invite warm FLEX prospects; 1st Workshop May 17",days:[5,6]},{text:"Start ALC pipeline: 10 new ALC conversations this week",days:MON_FRI},{text:"Workshop debrief: how did you show up as "+a.essence+" this week?",days:SUN}],
-      results:[{text:"5+ discovery calls completed"},{text:"2+ FLEX proposals sent"},{text:"ALC pipeline started (10+ conversations)"}] },
-    { weekNumber:4, cumulativePercentage:WK_PCT[3],
-      description:`Enroll 1st FLEX client; 2nd Intensive May 23–24 UP BGC; ALC pipeline at 30+ conversations`,
-      actions:[{text:"Close FLEX enrollment — follow up all proposals until YES or clear NO",days:MON_FRI},{text:"2nd Intensive May 23–24 UP BGC — attend; share enrollment progress with coach",days:[5,6]},{text:"30+ ALC conversations; 3+ discovery calls booked",days:MON_FRI},{text:"Celebrate FLEX win — send client a personal welcome message",days:[3]}],
-      results:[{text:`1st FLEX client ENROLLED ✓`},{text:"ALC pipeline: 30+ conversations, 3+ discovery calls"}] },
-    { weekNumber:5, cumulativePercentage:WK_PCT[4],
-      description:`ALC orientation calls; 3+ ALC prospects active; FLEX client thriving; direct prospects to ALC 256 (Jun 5–7 SMX Aura)`,
-      actions:[{text:"Conduct 3+ ALC orientation calls — paint the picture of ALC 256 (Jun 5–7 SMX Aura)",days:MON_FRI},{text:"Send 2+ ALC proposals; follow up daily",days:MON_FRI},{text:"Check in with FLEX client — document their early wins for your testimony",days:[2]},{text:"Rate your "+a.essence+" presence this week; adjust approach if needed",days:SUN}],
-      results:[{text:"3+ ALC prospects in proposal stage"},{text:"FLEX client active and engaged"}] },
-    { weekNumber:6, cumulativePercentage:WK_PCT[5],
-      description:`Enroll 1st ALC student — ALC 256 Jun 5–7 SMX Aura; ALC program launched`,
-      actions:[{text:"Close ALC enrollment — follow up until YES or clear NO",days:MON_FRI},{text:"ALC 256 Jun 5–7 SMX Aura — send off your ALC student with a personal message",days:[4,5,6]},{text:"ALC 257 (Jun 12–14) invitation: plant urgency seed for Wk 7",days:[3]},{text:"Document your full FLEX+ALC process — what worked?",days:SUN}],
-      results:[{text:`1st ALC student ENROLLED ✓`},{text:"Both clients receiving first sessions"}] },
-    { weekNumber:7, cumulativePercentage:WK_PCT[6],
-      description:`Goal hit — 1 FLEX + 1 ALC active; ALC 257 Jun 12–14 SMX Aura; testimony drafted; 2nd Workshop + AckNight Jun 14`,
-      actions:[{text:"ALC 257 Jun 12–14 SMX Aura — celebrate with your ALC student; 2nd Workshop + AckNight Jun 14",days:[4,5,6]},{text:"Draft your enrollment testimony — essence quality shown + results",days:[1,2]},{text:"Activate referral loop: ask each client for 1 referral",days:[2,3]},{text:"AckNight Jun 14 — share your story",days:[6]}],
-      results:[{text:"1 FLEX + 1 ALC active ✓"},{text:"Testimony drafted"},{text:"Referral conversations started"}] },
-    { weekNumber:8, cumulativePercentage:WK_PCT[7],
-      description:`Both clients thriving; onboarding documented; next cohort waitlist; testimony ready Jun 19; Graduation Jun 20–21`,
-      actions:[{text:"Final client check-in — gather early wins for testimony",days:[1,2]},{text:"Prepare personal graduation words for each enrolled client",days:[3]},{text:"Graduation Jun 20–21 — embrace your clients; deliver personal word",days:[5,6]},{text:"Lock next cohort waitlist; send invitations to 3 new prospects",days:[1,2,3]}],
-      results:[{text:"Both clients graduation-ready"},{text:"Testimony complete by Jun 19"},{text:"Next cohort waitlist started"}] },
-  ],
+  smarter: (a) => {
+    const total = parseInt(a.flexTarget || "1") + parseInt(a.alcTarget || "1");
+    const daysLabel = a.commitDays ? a.commitDays.replace(/,/g, "·") : "Mon–Fri";
+    const hrs = a.hoursPerDay || "1";
+    const network = a.warmNetworkSize || "50";
+    const block = a.outreachTimeBlock || "morning";
+    const ch = a.channel || "referrals";
+    const essArr = (a.essence || "loving,committed,courageous").split(",").map(s => s.trim()).filter(Boolean);
+    const essLabel = essArr.length >= 2
+      ? essArr.slice(0,-1).join(", ") + ", and " + essArr[essArr.length-1]
+      : essArr[0] || "loving";
+    const fx = parseInt(a.flexTarget || "1");
+    const al = parseInt(a.alcTarget || "1");
+    return {
+      goalStatement: `As I show up as ${essLabel}, I will enroll ${fx} FLEX client${fx > 1 ? "s" : ""} (May sessions) and ${al} ALC student${al > 1 ? "s" : ""} (June sessions) through ${ch} outreach—committing ${hrs}h/day on my ${daysLabel} block—by June 19, 2026.`,
+      specificDetails:     `${fx} FLEX + ${al} ALC · ${ch} · ${daysLabel} · ${hrs}h/day`,
+      measurableCriteria:  `${fx} FLEX Wk4 · ${al} ALC Wk5 · daily convo log`,
+      achievableResources: `${network}-person warm list · ${block} block · pitch scripts Wk1`,
+      relevantAlignment:   `First enrollment system · ${total} paying clients · comfort zone edge`,
+      endDate:             "June 19, 2026",
+      excitingMotivation:  `${essLabel} presence · first client at Graduation · business proven`,
+      rewardingBenefits:   `${total} paying clients · recurring income · LEAP 100 pipeline`,
+    };
+  },
+  milestones: (a) => {
+    const commitDays = parseDays(a.commitDays);
+    const cpd = convosPerDay(a.hoursPerDay);
+    const essArr = (a.essence || "loving,committed,courageous").split(",").map(s => s.trim()).filter(Boolean);
+    const essLabel = essArr.length >= 2
+      ? essArr.slice(0,-1).join(", ") + ", and " + essArr[essArr.length-1]
+      : essArr[0] || "authentic";
+    const ch = a.channel || "referrals";
+    const network = a.warmNetworkSize || "50";
+    const block = a.outreachTimeBlock || "morning";
+    const partner = a.accountabilityPartner
+      ? `Check in with ${a.accountabilityPartner} —`
+      : "Check in with your accountability partner —";
+    const obstacle = a.biggestObstacle || "fear of rejection";
+    return [
+      {
+        weekNumber: 1, cumulativePercentage: WK_PCT[0],
+        description: `Build system: ${network}-person warm list · FLEX + ALC pitch scripts · ${block} block locked · obstacle plan for "${obstacle}"`,
+        actions: [
+          { text: `Build warm list: ${network}+ prospects — name, contact, relationship, FLEX or ALC fit`, days: commitDays },
+          { text: `Draft ${ch} outreach script — FLEX pitch (May sessions) + ALC pitch (June sessions)`, days: [1, 2] },
+          { text: `Lock ${block} outreach block in calendar — phone alarm, non-negotiable`, days: [0] },
+          { text: `Obstacle plan: "${obstacle}" — write 3 specific moves to push through it`, days: [2] },
+          { text: `Book 5 invitation conversations from warm list for Wk 2`, days: [3, 4] },
+          { text: `${partner} share warm list + pitch draft; agree on weekly check-in day`, days: [4] },
+          { text: `Weekly review: log warm list progress; plan the 5 conversations you will open in Wk 2`, days: [6] },
+        ],
+        results: [
+          { text: `${network}-person warm list complete` },
+          { text: `FLEX (May 9–10 Abenson; May 16–17 SMX) + ALC (Jun 5–7; Jun 12–14 SMX) pitch scripts ready` },
+          { text: `${block} outreach block locked · obstacle plan in hand` },
+        ],
+      },
+      {
+        weekNumber: 2, cumulativePercentage: WK_PCT[1],
+        description: `Execute outreach: ${cpd * 5}+ conversations · 5 discovery calls · FLEX 298 May 9–10 Abenson HQ Muñoz — be at the door`,
+        actions: [
+          { text: `${block} block: ${cpd}+ ${ch} messages/calls daily — warm list first, then referrals`, days: commitDays },
+          { text: `Conduct 5 discovery calls; after each, note one moment you showed up as ${essLabel}`, days: [1, 2, 3, 4] },
+          { text: `Send 2+ FLEX proposals — use "FLEX 298 starts May 9" as urgency anchor`, days: [2, 3] },
+          { text: `FLEX 298 Sat May 9 Abenson HQ Muñoz — arrive early, be at the door to welcome participants`, days: [5] },
+          { text: `Embrazo FLEX 298 Sun May 10 — attend the closing ceremony; invite warm prospects to witness the transformation; open enrollment conversations after`, days: [6] },
+        ],
+        results: [
+          { text: `${cpd * 5}+ conversations completed` },
+          { text: `5+ discovery calls held` },
+          { text: `2+ FLEX proposals sent` },
+          { text: `At door for FLEX 298 May 9 ✓` },
+        ],
+      },
+      {
+        weekNumber: 3, cumulativePercentage: WK_PCT[2],
+        description: `Close FLEX pipeline · FLEX 299 May 16–17 SMX Aura + 1st Workshop May 17 — be at the door, embrace the energy`,
+        actions: [
+          { text: `Follow up all Wk 2 FLEX proposals — get YES, NO, or a clear next step`, days: commitDays },
+          { text: `Send 2 new FLEX proposals; start ALC pipeline — 10 new ALC conversations`, days: [0, 1, 2] },
+          { text: `FLEX 299 Sat May 16 SMX Aura — arrive early, be at the door; bring 1 warm FLEX prospect`, days: [5] },
+          { text: `Embrazo FLEX 299 + 1st Workshop Sun May 17 — attend the closing ceremony; share your enrollment progress at the workshop; use the room energy to open new ALC conversations`, days: [6] },
+        ],
+        results: [
+          { text: `5+ discovery calls complete · FLEX close imminent` },
+          { text: `2+ FLEX proposals sent` },
+          { text: `ALC pipeline started (10+ conversations)` },
+          { text: `At door FLEX 299 May 16 ✓ · 1st Workshop attended ✓` },
+        ],
+      },
+      {
+        weekNumber: 4, cumulativePercentage: WK_PCT[3],
+        description: `Enroll 1st FLEX client · 2nd Intensive May 23–24 UP BGC — be at door · ALC pipeline 30+ conversations`,
+        actions: [
+          { text: `Close FLEX enrollment — follow up every open proposal until YES or clear NO`, days: commitDays },
+          { text: `ALC pipeline: 30+ conversations · 3+ discovery calls booked`, days: commitDays },
+          { text: `2nd Intensive Sat May 23 UP BGC — arrive early, be at the door; share FLEX close with coach`, days: [5] },
+          { text: `2nd Intensive Sun May 24 UP BGC — attend day 2; absorb the energy; set ALC close intention for Wk 5`, days: [6] },
+          { text: `When FLEX YES lands — send client a personal welcome message within 1 hour`, days: [0, 1, 2, 3] },
+          { text: `${partner} FLEX close status + ALC pipeline count`, days: [3] },
+        ],
+        results: [
+          { text: `1st FLEX client ENROLLED ✓` },
+          { text: `ALC pipeline: 30+ conversations · 3+ discovery calls` },
+          { text: `At 2nd Intensive May 23–24 ✓` },
+        ],
+      },
+      {
+        weekNumber: 5, cumulativePercentage: WK_PCT[4],
+        description: `ALC orientation calls · 3+ prospects in proposal · FLEX client thriving · ALC 256 Jun 5–7 urgency planted`,
+        actions: [
+          { text: `Conduct 3+ ALC orientation calls — paint the ALC 256 picture (Jun 5–7 SMX Aura)`, days: commitDays },
+          { text: `Send 2+ ALC proposals; follow up daily — use "ALC 256 starts Jun 5" as urgency anchor`, days: commitDays },
+          { text: `FLEX client check-in — document their first wins; these become your testimony`, days: [2] },
+          { text: `${partner} share: ALC proposal count + FLEX client early testimony line`, days: [3] },
+          { text: `Rate your ${essLabel} presence in each outreach session (1–10); note what shifted`, days: commitDays },
+          { text: `Weekly review Sun: pipeline count — how many ALC prospects active? What is the close plan for Wk 6?`, days: [6] },
+        ],
+        results: [
+          { text: `3+ ALC prospects in proposal stage` },
+          { text: `FLEX client active and engaged ✓` },
+          { text: `ALC 256 (Jun 5–7) urgency planted` },
+        ],
+      },
+      {
+        weekNumber: 6, cumulativePercentage: WK_PCT[5],
+        description: `Enroll 1st ALC student · ALC 256 Jun 5–7 SMX Aura · be at the door · document your process`,
+        actions: [
+          { text: `Close ALC enrollment — follow up every open proposal until YES or clear NO`, days: commitDays },
+          { text: `ALC 256 Fri Jun 5 — send enrolled ALC student a personal message: "You made it"`, days: [4] },
+          { text: `ALC 256 Sat Jun 6 SMX Aura — arrive early, be at the door to welcome your ALC student`, days: [5] },
+          { text: `Embrazo ALC 256 Sun Jun 7 — attend the closing ceremony with your ALC student; invite remaining warm prospects to witness the transformation; open ALC 257 conversations`, days: [6] },
+          { text: `Document your FLEX + ALC process: what worked, what you would do differently`, days: [1, 2] },
+        ],
+        results: [
+          { text: `1st ALC student ENROLLED ✓` },
+          { text: `Both clients receiving first sessions` },
+          { text: `Enrollment process documented` },
+        ],
+      },
+      {
+        weekNumber: 7, cumulativePercentage: WK_PCT[6],
+        description: `Goal complete · ALC 257 Jun 12–14 SMX Aura · 2nd Workshop + AckNight Jun 14 · testimony drafted`,
+        actions: [
+          { text: `ALC 257 Fri Jun 12 — reach out to your ALC student; celebrate their commitment`, days: [4] },
+          { text: `ALC 257 Sat Jun 13 SMX Aura — arrive early, be at the door; celebrate with your ALC student`, days: [5] },
+          { text: `Activate referral loop: ask each client for 1 referral for LEAP 100`, days: [0, 1, 2] },
+          { text: `Draft enrollment testimony — ${essLabel} qualities shown + obstacle overcome + results achieved`, days: [1, 2, 3] },
+          { text: `${partner} goal complete — share your testimony draft`, days: [3] },
+          { text: `Embrazo ALC 257 + AckNight Sun Jun 14 — attend the closing ceremony; share your enrollment testimony on stage; receive acknowledgment`, days: [6] },
+        ],
+        results: [
+          { text: `1 FLEX + 1 ALC ACTIVE ✓` },
+          { text: `Testimony drafted` },
+          { text: `Referral conversations started` },
+          { text: `AckNight Jun 14 attended ✓` },
+        ],
+      },
+      {
+        weekNumber: 8, cumulativePercentage: WK_PCT[7],
+        description: `Both clients thriving · testimony ready Jun 19 · Graduation Jun 20–21 · next cohort waitlist locked`,
+        actions: [
+          { text: `Final client check-ins — gather early wins; finalize testimony`, days: [0, 1, 2] },
+          { text: `Prepare personal graduation words for each client — specific, personal, from the heart`, days: [2, 3] },
+          { text: `Submit testimony by Fri Jun 19 — your full FLEX + ALC enrollment story`, days: [4] },
+          { text: `Graduation Sat Jun 20 — arrive early, be at the door; embrace each client as they walk in`, days: [5] },
+          { text: `Embrazo + Graduation Sun Jun 21 — attend the closing ceremony; deliver your personal word to each enrolled client; embrace their transformation`, days: [6] },
+          { text: `Lock next cohort waitlist — send invitations to 3 new warm prospects`, days: [0, 1, 2, 3] },
+        ],
+        results: [
+          { text: `Both clients graduation-ready ✓` },
+          { text: `Testimony submitted Jun 19 ✓` },
+          { text: `Next cohort waitlist started` },
+          { text: `At Graduation Jun 20–21 ✓` },
+        ],
+      },
+    ];
+  },
 };
-
 // ─────────────────────────────────────────────────────────────────────────────
 // ENROLLMENT — High Volume (2+ FLEX + 2+ ALC pipeline)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -131,8 +293,9 @@ const enrollmentHighVolume: GoalTemplate = {
     { id: "flexTarget",  label: "FLEX clients to enroll (2–5)",     type: "number", placeholder: "2", defaultValue: "2" },
     { id: "alcTarget",   label: "ALC students to enroll (2–5)",     type: "number", placeholder: "2", defaultValue: "2" },
     { id: "channel",     label: "Primary outreach channel",         type: "multiselect", options: ["referrals","social media","calls","combination","other"], defaultValue: "referrals" },
-    { id: "essence",     label: "Essence quality to embody in enrollment", type: "multiselect",
-      options: ["authentic","generous","service-oriented","abundant","courageous","committed","bold","joyful","patient","warm","inspired","other"], defaultValue: "abundant" },
+    { id: "essence",     label: "3 essence qualities to embody (pick 3)",   type: "multiselect",
+      options: ["authentic","generous","service-oriented","abundant","courageous","committed","bold","joyful","patient","warm","inspired","other"], defaultValue: "loving,committed,courageous",
+      hint: "LEAP coaches always embody exactly 3 qualities. These 3 become the soul of every conversation." },
   ],
   smarter: (a) => {
     const total = parseInt(a.flexTarget || "2") + parseInt(a.alcTarget || "2");
@@ -142,7 +305,7 @@ const enrollmentHighVolume: GoalTemplate = {
       achievableResources: `Warm network + referral chain from first clients; both FLEX 298 + 299 and ALC 256 + 257 as live urgency tools; 3+ hours/day dedicated; systematic funnel tracking in GoalGetter`,
       relevantAlignment: `I have never managed a multi-client pipeline simultaneously — enrolling ${total} paying clients pushes well beyond my previous enrollment comfort zone`,
       endDate: "June 19, 2026",
-      excitingMotivation: `Showing up ${a.essence || "abundant"} — proving I can build a coaching practice, not just close one client; the moment all ${total} clients are active is the moment my business becomes real`,
+      excitingMotivation: (() => { const ea = (a.essence || "loving,committed,courageous").split(",").map(s=>s.trim()).filter(Boolean); const el = ea.length >= 2 ? ea.slice(0,-1).join(", ") + ", and " + ea[ea.length-1] : ea[0] || "abundant"; return `Showing up as ${el} — proving I can build a coaching practice, not just close one client; the moment all ${total} clients are active is the moment my business becomes real`; })(),
       rewardingBenefits: `${total} active clients; stable monthly income; referral network activated; business model proven for LEAP 100 and beyond`,
     };
   },
@@ -534,10 +697,10 @@ const personalRelationshipDeepen: GoalTemplate = {
   subType: "relationship-deepen",
   name: "Deepening a Relationship",
   description: "Grow a real relationship through YOUR consistent showing up — not changing the other person, but measuring your own presence and actions.",
-  wheelAreaHint: "Area C: Relationships",
+  wheelAreaHint: "Area C: Relationships · Area E: Family & Home",
   questions: [
     { id: "relation",      label: "Who is this with?", type: "select",
-      options: ["partner","parent","sibling","close friend","child","mentor"], defaultValue: "partner" },
+      options: ["partner","parent","sibling","close friend","child","mentor","grandparent","estranged family member","housemate / roommate","teammate / colleague"], defaultValue: "partner" },
     { id: "currentScore",  label: "Current closeness score (1–10)",  type: "number", placeholder: "5", defaultValue: "5" },
     { id: "targetScore",   label: "Target closeness score",          type: "number", placeholder: "8", defaultValue: "8" },
     { id: "sessionsPerWk", label: "Quality sessions per week you commit to", type: "number", placeholder: "3", defaultValue: "3" },
@@ -895,6 +1058,294 @@ const professionalSkills: GoalTemplate = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// PERSONAL — The Experience Goal (Fun & Recreation)
+// ─────────────────────────────────────────────────────────────────────────────
+const personalExperienceGoal: GoalTemplate = {
+  id: "personal-experience-goal",
+  goalType: "personal",
+  subType: "experience-goal",
+  name: "The Experience Goal",
+  description: "Commit to a real experience you've been deferring — a trip, adventure, creative project, or bucket list item — and become the person who lives fully, not just productively.",
+  wheelAreaHint: "Area F: Fun & Recreation",
+  questions: [
+    { id: "experience", label: "Type of experience", type: "multiselect",
+      options: ["adventure / outdoor challenge","local travel (province / region)","international travel","creative project / artistic event","bucket list item","sports / athletic challenge","live music / cultural event","wellness retreat / healing experience","community / volunteer experience","learning immersion (course, camp, workshop)","family reunion / bonding experience","other"],
+      hint: "Pick the type that best describes it." },
+    { id: "specificExperience", label: "Describe it in 1 line (e.g., 'Climb Mt. Pulag with my brother')", type: "text", placeholder: "e.g., Solo trip to Siargao, surf lessons included" },
+    { id: "deferring", label: "How long have you been putting this off?", type: "select",
+      options: ["Less than a year","1–2 years","3–5 years","More than 5 years","This is new — inspired to start now"], defaultValue: "1–2 years" },
+    { id: "blockingBelief", label: "What has stopped you before?", type: "multiselect",
+      options: ["I don't deserve it until I've worked hard enough","Not practical / responsible","Other people need me first","I'll do it when I have more money / time / energy","Afraid of how much I'll enjoy it then miss it","No one to go with","Fear of the unknown","I keep saying 'someday'","other"],
+      hint: "Naming the block is the first step to breaking it." },
+    { id: "solo_group", label: "Solo or with others?", type: "select",
+      options: ["Solo — this is for me alone","With 1 person I love","Small group (3–6 people)","Family experience"], defaultValue: "Solo — this is for me alone" },
+    { id: "timing", label: "When will this happen?", type: "select",
+      options: ["Week 3–4 (early — use LEAP energy)","Week 5–6 (midpoint — reward progress)","Week 7–8 (culmination — graduation gift to self)","Multiple smaller experiences spread through 8 weeks"], defaultValue: "Week 7–8 (culmination — graduation gift to self)" },
+    { id: "cost", label: "Estimated cost (₱)", type: "number", placeholder: "5000", defaultValue: "5000" },
+    { id: "savingNeeded", label: "Do you need to save or budget for this?", type: "select",
+      options: ["Yes — I need to set aside money","No — budget already available"], defaultValue: "Yes — I need to set aside money" },
+    { id: "savingsPerWeek", label: "Weekly savings target (₱)", type: "number", placeholder: "1000", defaultValue: "1000",
+      dependsOn: { id: "savingNeeded", value: "Yes — I need to set aside money" } },
+    { id: "essence", label: "Essence quality this experience will build in you", type: "multiselect",
+      options: ["aliveness","joy","freedom","courage","presence","spontaneity","adventure","rest","playfulness","connection","gratitude","other"],
+      hint: "This isn't just a fun trip — it's a declaration: 'I am the person who lives fully.'" },
+  ],
+  smarter: (a) => ({
+    specificDetails: `Experience: ${a.specificExperience || a.experience || "chosen experience"} — ${a.solo_group || "solo or with others"}; happening in ${a.timing?.split(" (")[0] || "Week 7–8"}; cost: ₱${a.cost || "5,000"}${a.savingNeeded?.startsWith("Yes") ? `; save ₱${a.savingsPerWeek || "1,000"}/week` : ""}; weekly preparation milestones build toward this`,
+    measurableCriteria: `Experience booked or committed to by Wk 2; savings on track${a.savingNeeded?.startsWith("Yes") ? ` (₱${parseInt(a.savingsPerWeek||"1000")*8} total)` : ""}; ${a.essence || "aliveness"} score (1–10) tracked every Sunday; post-experience reflection written and submitted`,
+    achievableResources: `Budget ₱${a.cost || "5,000"}${a.savingNeeded?.startsWith("Yes") ? ` (₱${a.savingsPerWeek || "1,000"}/week saved)` : " — already available"}; ${a.solo_group?.startsWith("Solo") ? "no coordination needed — fully in my control" : "companions identified and invited Wk 1"}; LEAP schedule supports this; commitment declared to coach`,
+    relevantAlignment: `I have been deferring this for ${a.deferring?.split(" (")[0] || "years"} because of: ${a.blockingBelief || "practical excuses"}. For the first time I am treating joy and aliveness as a real goal — not something to earn after everything else is done. This experience breaks the 'someday' pattern.`,
+    endDate: "June 19, 2026",
+    excitingMotivation: `The version of me at graduation who has lived fully during LEAP — not just worked hard. The story: "I was in the most intense personal development programme of my life and I still went." The feeling of ${a.essence || "aliveness"} carrying into everything else I do.`,
+    rewardingBenefits: `${a.specificExperience || "Experience"} completed; ${a.essence || "aliveness"} embodied; savings habit built${a.savingNeeded?.startsWith("Yes") ? ` (₱${parseInt(a.savingsPerWeek||"1000")*8} saved)` : ""}; identity shift: "I am someone who lives fully"; testimony: "I didn't just survive LEAP — I lived it"`,
+  }),
+  milestones: (a) => {
+    const early  = a.timing?.includes("Week 3–4");
+    const mid    = a.timing?.includes("Week 5–6");
+    const series = a.timing?.includes("Multiple");
+    const exp    = a.specificExperience || a.experience || "the experience";
+    const save   = a.savingNeeded?.startsWith("Yes");
+    const sav    = `₱${a.savingsPerWeek || "1,000"}`;
+    const ess    = a.essence || "aliveness";
+    const savTotal = (n: number) => `₱${parseInt(a.savingsPerWeek||"1000")*n} saved`;
+    return [
+      { weekNumber:1, cumulativePercentage:WK_PCT[0],
+        description:`Declare the experience publicly; make 1 concrete booking step; name and break your blocking belief; ${save?"start savings":"confirm budget"}`,
+        actions:[
+          {text:`Declare: "${exp} — I am doing this by ${early?"Week 3–4":mid?"Week 5–6":"Week 7–8"}" — share with coach`,days:MON},
+          {text:save?`Set up weekly savings: ${sav}/week — first transfer today`:`Confirm ₱${a.cost||"5,000"} budget — earmarked`,days:MON},
+          {text:`Name blocking belief: "${a.blockingBelief||"I'll do it someday"}" — write counter-identity statement`,days:[1]},
+          {text:a.solo_group?.startsWith("Solo")?"Plan solo itinerary — research first details":"Invite companion(s) — get first YES confirmed",days:[2,3]},
+          {text:`Sunday: ${ess} score 1–10 — baseline`,days:SUN},
+        ],
+        results:[{text:"Experience declared publicly ✓"},{text:save?"Savings started ✓":"Budget confirmed ✓"},{text:"Blocking belief named and countered"}] },
+      { weekNumber:2, cumulativePercentage:WK_PCT[1],
+        description:`Experience BOOKED or concretely committed; itinerary drafted; ${save?sav+" transferred ("+savTotal(2)+")":"preparation in motion"}`,
+        actions:[
+          {text:`Book or lock in ${exp} — ticket, reservation, or public date set`,days:MON},
+          {text:"Draft itinerary or experience plan — what happens, when, how",days:[1,2]},
+          {text:save?`Transfer ${sav} — Week 2`:"Confirm all logistics: companions, transport, accommodation",days:[3]},
+          {text:"Share full plan with coach — accountability confirmation",days:[4]},
+          {text:`${ess} score`,days:SUN},
+        ],
+        results:[{text:`${exp} BOOKED ✓`},{text:save?savTotal(2):"Plan confirmed"},{text:"Itinerary drafted"}] },
+      { weekNumber:3, cumulativePercentage:WK_PCT[2],
+        description:early?`EXPERIENCE WEEK — ${exp} — live it fully; 1st Workshop May 17`:`Preparation deepens; 1st Workshop May 17 — how does aliveness show up here?`,
+        actions:early?[
+          {text:`${exp} — LIVE IT FULLY; phones managed intentionally`,days:[3,4,5]},
+          {text:"Document: photos, voice notes, journal — capture every feeling",days:DAILY},
+          {text:"1st Workshop May 17 — bring your aliveness energy into the room",days:[6]},
+          {text:`${ess} score — expect peak`,days:SUN},
+        ]:[
+          {text:save?`Transfer ${sav} — Week 3`:"Confirm bookings and logistics",days:MON},
+          {text:"Research or prepare 1 specific element of the experience in detail",days:[1,2]},
+          {text:series?"Do Experience #1 this week — small, intentional":"Tell 3 people what experience you've committed to",days:[3,4]},
+          {text:"1st Workshop May 17 — how does this experience connect to who you're becoming?",days:[6]},
+          {text:`${ess} score`,days:SUN},
+        ],
+        results:early?[{text:`${exp} EXPERIENCED ✓`},{text:"Documentation complete"},{text:`${ess} score — peak`}]:[{text:save?savTotal(3):"Preparation on track"},{text:series?"Experience #1 done ✓":"Commitment shared publicly"}] },
+      { weekNumber:4, cumulativePercentage:WK_PCT[3],
+        description:early?`Post-experience integration; what changed in you? 2nd Intensive May 23–24`:mid?`EXPERIENCE happening this week — final prep; 2nd Intensive May 23–24`:`Midpoint; ${save?savTotal(4):"logistics confirmed"}; 2nd Intensive May 23–24`,
+        actions:[
+          {text:early?"Write: 'Before and after — what shifted in me?'":mid?`Final logistics for ${exp} confirmed`:`${save?`Transfer ${sav} — Week 4`:"Final headcount / booking confirmation"}`,days:MON},
+          {text:"2nd Intensive May 23–24 UP BGC — carry your essence quality into the room",days:[5,6]},
+          {text:early?"Share experience story with 1 person who needs inspiration":mid?`${exp} — LIVE IT FULLY`:series?"Do Experience #2 this week":"Practice the presence / mindset you want to bring to the experience",days:[2,3]},
+          {text:`${ess} score`,days:SUN},
+        ],
+        results:[{text:early?"Integration written ✓":mid?`${exp} EXPERIENCED ✓`:save?savTotal(4):"Midpoint milestone hit"},{text:"2nd Intensive attended"}] },
+      { weekNumber:5, cumulativePercentage:WK_PCT[4],
+        description:mid?`Post-experience integration; ${ess} habits built into daily life`:early?`${ess} habits from experience embedded; score stays elevated`:series?"Experience #3 this week; pattern of joy established":`Savings on track ${save?"("+savTotal(5)+")":""}; countdown building`,
+        actions:mid?[
+          {text:`Write: 'Before and after — what shifted in me after ${exp}?'`,days:MON},
+          {text:`Build 1 '${ess} ritual' inspired by the experience into your daily routine`,days:[1,2]},
+          {text:"Share your experience story at LEAP or with your accountability partner",days:[3]},
+          {text:`${ess} score`,days:SUN},
+        ]:[
+          {text:save?`Transfer ${sav} — Week 5`:"Confirm final participants",days:MON},
+          {text:early?`Build 1 '${ess} ritual' into your daily routine`:series?"Experience #3 — document how joy is becoming normal":"Visualize the experience — write exactly how it will feel",days:[1,2,3]},
+          {text:`Ask: 'Am I living like someone who does experiences like ${exp} regularly?'`,days:[4]},
+          {text:`${ess} score`,days:SUN},
+        ],
+        results:mid?[{text:`${ess} habit built ✓`},{text:"Experience story shared"}]:[{text:save?savTotal(5):"Preparation on track"},{text:early?`${ess} ritual established ✓`:series?"3 experiences done ✓":"Countdown begun ✓"}] },
+      { weekNumber:6, cumulativePercentage:WK_PCT[5],
+        description:`ALC Jun 5–7; ${early||mid?"post-experience aliveness sustained in LEAP":"final countdown — everything confirmed"}`,
+        actions:[
+          {text:save?`Transfer ${sav} — Week 6`:"Final logistics locked and confirmed",days:MON},
+          {text:"ALC 256 Jun 5–7 — bring your aliveness energy into the weekend",days:[4,5,6]},
+          {text:early||mid?"Share your experience story at ALC if invited":"Complete preparation checklist — nothing left to chance",days:[3]},
+          {text:series?"Experience #4 this week":`Ask your coach: 'Do you see ${ess} in how I show up now?'`,days:[2]},
+          {text:`${ess} score`,days:SUN},
+        ],
+        results:[{text:save?savTotal(6):"All logistics confirmed"},{text:early||mid?"Aliveness visible to others ✓":"Final prep complete ✓"}] },
+      { weekNumber:7, cumulativePercentage:WK_PCT[6],
+        description:(!early&&!mid&&!series)?`EXPERIENCE WEEK — ${exp} — LIVE IT FULLY; AckNight Jun 14`:`${ess} at peak; AckNight Jun 14 — share testimony`,
+        actions:(!early&&!mid&&!series)?[
+          {text:`${exp} — LIVE IT FULLY; document every moment`,days:[3,4,5]},
+          {text:"AckNight Jun 14 — share your experience as your testimony",days:[6]},
+          {text:"Photos / videos / journal captured",days:DAILY},
+          {text:`${ess} score — peak`,days:SUN},
+        ]:[
+          {text:"AckNight Jun 14 — share how this experience changed you",days:[6]},
+          {text:series?"Experience #5 (if planned)":`Integration: 'How has living fully changed the rest of my life?'`,days:[3,4]},
+          {text:"Write testimony: 'I am the person who does experiences like this'",days:[4,5]},
+          {text:`${ess} score`,days:SUN},
+        ],
+        results:[{text:(!early&&!mid&&!series)?`${exp} EXPERIENCED ✓`:"Testimony drafted"},{text:"AckNight shared ✓"}] },
+      { weekNumber:8, cumulativePercentage:WK_PCT[7],
+        description:`Experience completed; evidence compiled; testimony submitted; Graduation Jun 20–21`,
+        actions:[
+          {text:"Write final testimony: 'I lived fully during LEAP, not just worked hard'",days:[1,2]},
+          {text:"Compile evidence: photos, savings records, journal entries, aliveness scores",days:[2,3]},
+          {text:"Graduation Jun 20–21 — carry your aliveness identity into the room",days:[5,6]},
+          {text:"Submit testimony by Jun 19",days:[4]},
+        ],
+        results:[{text:`${exp} — DONE ✓`},{text:"Evidence compiled"},{text:"Testimony: 'I am someone who lives fully' ✓"}] },
+    ];
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PROFESSIONAL — Workspace by Design (Work / Study / Business Environment)
+// ─────────────────────────────────────────────────────────────────────────────
+const professionalWorkspace: GoalTemplate = {
+  id: "professional-workspace-design",
+  goalType: "professional",
+  subType: "workspace-design",
+  name: "Workspace by Design",
+  description: "Build a workspace that reflects your ambition — whether you're employed, studying, or running a business. Dedicated space + systems + routine = an environment that performs as hard as you do.",
+  wheelAreaHint: "Area H: Work Environment",
+  questions: [
+    { id: "context", label: "Your current situation", type: "select",
+      options: ["employed (office / WFH)","student / still studying","freelancer / self-employed","starting a business","running a business","career transition"], defaultValue: "employed (office / WFH)" },
+    { id: "spaceType", label: "What kind of workspace are you building?", type: "multiselect",
+      options: ["dedicated home office / desk setup","study station / learning environment","business space (studio / shop / salon / home office)","shared space optimization","digital workspace (tools / apps / systems / files)","outdoor / mobile workspace","other"],
+      hint: "Pick all that apply." },
+    { id: "currentPain", label: "Current pain points in your environment", type: "multiselect",
+      options: ["no dedicated workspace","cluttered / disorganized","noisy / full of distractions","poor lighting or ergonomics","missing key equipment or tools","digital chaos (messy files, too many tabs, no systems)","no separation between work and rest","uninspiring — no energy when I sit there","uncomfortable (no proper chair / desk / monitor)","shared space with others who disrupt focus","no work / study startup routine","toxic coworkers or classmates","other"],
+      hint: "Name exactly what's broken — this becomes your improvement target." },
+    { id: "targetOutcome", label: "Target outcomes by Week 8", type: "multiselect",
+      options: ["dedicated workspace fully set up","ergonomic setup (desk, chair, monitor, lighting)","organization system complete (files, storage, labeling)","digital systems running (cloud, tools, apps, folder structure)","distraction management system in place","daily work / study routine locked (6/7 days)","professional / inspiring atmosphere established","business-ready space (for clients / calls / operations)","other"],
+      hint: "Pick everything you want to say 'done' on by Week 8." },
+    { id: "budget", label: "Budget available (₱)", type: "number", placeholder: "5000", defaultValue: "5000",
+      hint: "Even ₱2,000 spent with intention transforms a space." },
+    { id: "keyPurchase", label: "Top items to buy or set up", type: "multiselect",
+      options: ["proper desk","ergonomic chair","monitor / second screen","desk lamp / lighting upgrade","noise-cancelling headphones","desk organizer / shelves / storage bins","whiteboard or corkboard","cable management","laptop riser / standing desk attachment","faster WiFi router / ethernet cable","plants / decor (environment = mood)","keyboard / mouse upgrade","cloud storage / backup system","printer","other"],
+      hint: "Be specific — vague intentions don't get purchased." },
+    { id: "skillGoal", label: "Is there a skill or career goal attached to this workspace?", type: "select",
+      options: ["No — the environment upgrade is the full goal","Yes — building this to get employed / land a job","Yes — building this to start or grow a business","Yes — building this to level up as a freelancer","Yes — building this to develop a specific skill"], defaultValue: "No — the environment upgrade is the full goal" },
+    { id: "skillType", label: "Skill or goal type", type: "multiselect",
+      options: ["job application & interview skills","portfolio / resume building","coding / tech skills","business plan / model","social media marketing","sales & outreach","client-facing communication","content creation (writing / video / design)","financial management / bookkeeping","operations & systems","graphic design","online store / shop setup","certification / licensure prep","other"],
+      hint: "What do you need to build, know, or prove in 8 weeks?",
+      dependsOn: { id: "skillGoal", notEmpty: true } },
+    { id: "skillOutcome", label: "Skill outcome by Week 8 (e.g., 'Land 1 job interview', 'Open Shopee store')", type: "text", placeholder: "e.g., Launch Notion client portal, pass 1 job interview",
+      dependsOn: { id: "skillGoal", notEmpty: true } },
+  ],
+  smarter: (a) => {
+    const hasSkill = !a.skillGoal?.startsWith("No");
+    return {
+      specificDetails: `Build a ${a.spaceType || "dedicated workspace"} for a ${a.context || "professional"} — address: ${a.currentPain || "current pain points"}; achieve: ${a.targetOutcome || "functional workspace"}; budget ₱${a.budget || "5,000"}; key items: ${a.keyPurchase || "desk, organization, digital tools"}${hasSkill ? `; attached skill goal: ${a.skillOutcome || a.skillType || "professional skill"}` : ""}`,
+      measurableCriteria: `Weekly environment score (1–10) tracked; all target outcomes complete by Wk 7; budget ₱${a.budget || "5,000"} tracked; work / study routine at 6/7 days by Wk 5${hasSkill ? `; skill outcome: ${a.skillOutcome || "delivered by Wk 7"}` : ""}`,
+      achievableResources: `Budget ₱${a.budget || "5,000"} allocated; Lazada / Shopee / 2nd-hand for key items; ${a.context?.includes("student") ? "study community and school resources available" : a.context?.includes("business") ? "business community and LEAP network for referrals" : "WFH flexibility and time block protection"}; accountability coach weekly`,
+      relevantAlignment: `My current environment (${a.currentPain || "cluttered, uninspiring, distracting"}) costs me daily performance and mental energy. For the first time I am treating my workspace as infrastructure — not an afterthought. As a ${a.context || "professional"}, my environment should reflect my standards.`,
+      endDate: "June 19, 2026",
+      excitingMotivation: `Sitting at my workspace after it's done and feeling: "This is built for someone serious." The focus sessions I'll have, the quality of work produced, the identity of being the kind of person whose environment reflects their ambition.${hasSkill ? ` Plus: ${a.skillOutcome || "the skill outcome"} achieved.` : ""}`,
+      rewardingBenefits: `${a.targetOutcome || "Workspace"} complete; environment score 3 → 8+; daily routine locked; ₱${a.budget || "5,000"} invested in self with purpose${hasSkill ? `; ${a.skillOutcome || "skill goal"} delivered` : ""}; testimony: "I built a space that performs as hard as I do"`,
+    };
+  },
+  milestones: (a) => {
+    const hasSkill  = !a.skillGoal?.startsWith("No");
+    const isStudent = a.context?.includes("student");
+    const isBiz     = a.context?.includes("business");
+    const label     = isStudent ? "study station" : isBiz ? "business workspace" : "workspace";
+    const skillLabel = a.skillType || "professional skill";
+    const skillOut   = a.skillOutcome || "skill outcome";
+    return [
+      { weekNumber:1, cumulativePercentage:WK_PCT[0],
+        description:`Full environment audit; priority purchase list built; top 2 items ordered; digital declutter started; baseline score logged`,
+        actions:[
+          {text:`Photograph current space; list every pain point from your list: ${a.currentPain || "your audit"}`,days:MON},
+          {text:`Build priority list (max ₱${a.budget||"5,000"}); order top 2 items now (Lazada / Shopee / 2nd hand)`,days:MON},
+          {text:"Clear 1 full surface — declutter ruthlessly; physical space reflects mental state",days:[1,2]},
+          {text:"Digital declutter: organize desktop, close unused apps, set up 1 folder system",days:[3]},
+          {text:`Log environment score (1–10) — baseline`,days:MON},
+          ...(hasSkill?[{text:`Research: ${skillLabel} — find 1 resource (course / book / video) and start`,days:[4]}]:[]),
+        ],
+        results:[{text:"Space audited — pain list documented"},{text:"Top 2 items ordered ✓"},{text:`Baseline environment score logged`},...(hasSkill?[{text:`${skillLabel} — first resource found ✓`}]:[])] },
+      { weekNumber:2, cumulativePercentage:WK_PCT[1],
+        description:`Purchased items installed; core ${label} takes shape; digital systems set up; work / study routine drafted`,
+        actions:[
+          {text:"Install / assemble all purchased items; rearrange furniture if needed",days:MON},
+          {text:"Set up digital system: cloud storage, folder structure, or productivity app",days:[1,2]},
+          {text:`Draft your ${isStudent?"study":"work"} startup routine: first 15 min at desk = sacred focus time`,days:[3]},
+          {text:"Take 'Week 1 → Week 2 progress' photos — document the transformation",days:[4]},
+          ...(hasSkill?[{text:`${skillLabel} — first practice session or application submitted`,days:[2,3]}]:[]),
+          {text:"Environment score",days:SUN},
+        ],
+        results:[{text:"Key items installed ✓"},{text:"Digital system set up ✓"},...(hasSkill?[{text:`First ${skillLabel} session done ✓`}]:[])] },
+      { weekNumber:3, cumulativePercentage:WK_PCT[2],
+        description:`Work / study routine running 5+ days; organization system built; 1st Workshop May 17`,
+        actions:[
+          {text:`Run ${isStudent?"study":"work"} routine 5 days this week — protect the first 15 min`,days:MON_FRI},
+          {text:"Build organization system: physical (storage, labels, bins) + digital (file naming, folders)",days:[1,2]},
+          {text:"1st Workshop May 17 — how does a designed workspace connect to who you're becoming?",days:[6]},
+          ...(hasSkill?[{text:`${skillLabel} — 3+ sessions this week`,days:MON_FRI}]:[]),
+          {text:"Environment score",days:SUN},
+        ],
+        results:[{text:"Routine 5+ days ✓"},{text:"Organization system in place ✓"},...(hasSkill?[{text:`${skillLabel}: 3+ sessions done ✓`}]:[])] },
+      { weekNumber:4, cumulativePercentage:WK_PCT[3],
+        description:`Optimization round 2; distraction management working; 2nd Intensive May 23–24 — routine survives the schedule`,
+        actions:[
+          {text:"Identify what's still not working — buy or fix 1 more thing",days:MON},
+          {text:"Set up distraction management: phone rules, noise solution, do-not-disturb signal",days:[1,2]},
+          {text:"2nd Intensive May 23–24 UP BGC — keep workspace routine going even during the intensive",days:[5,6]},
+          ...(hasSkill?[{text:`${skillLabel} — midpoint milestone: what has the workspace enabled?`,days:[3,4]}]:[]),
+          {text:"Environment score",days:SUN},
+        ],
+        results:[{text:"Distraction system working ✓"},...(hasSkill?[{text:`${skillLabel} midpoint done ✓`}]:[{text:"Optimization round 2 complete ✓"}])] },
+      { weekNumber:5, cumulativePercentage:WK_PCT[4],
+        description:`${label} fully functional; routine at 6/7 days; test: has performance actually improved?`,
+        actions:[
+          {text:"Run routine 6/7 days this week — no excuses",days:DAILY},
+          {text:"Self-test: rate output quality / focus hours vs. Week 1 — document the delta",days:[3]},
+          {text:isBiz?"Workspace is client-ready — do 1 test call or client meeting in it":isStudent?"Deep study session: 2+ uninterrupted hours — measure focus time":"Deep work: 2+ uninterrupted hours in your designed workspace",days:[2,4]},
+          ...(hasSkill?[{text:`${skillLabel} — push week; adjust pace if behind`,days:MON_FRI}]:[]),
+          {text:"Environment score — target 7+ by now",days:SUN},
+        ],
+        results:[{text:"Routine 6/7 days ✓"},{text:"Performance self-test done — improvement documented ✓"},...(hasSkill?[{text:`${skillLabel} on track for ${skillOut}`}]:[])] },
+      { weekNumber:6, cumulativePercentage:WK_PCT[5],
+        description:`Final touches; ALC Jun 5–7 — workspace routine protected; ${hasSkill?"skill nearing completion":"environment score 8+"}`,
+        actions:[
+          {text:"ALC 256 Jun 5–7 — protect routine even through intensive weekend",days:[4,5,6]},
+          {text:"Final touch: 1 thing that makes the space feel like yours (plant, inspiration board, photo)",days:[1,2]},
+          {text:isBiz?"Client-facing workspace ready — test with 1 real session":isStudent?"Space optimized for upcoming exams / finals":"Ask: 'Would I be proud to show my coach this workspace?'",days:[3]},
+          ...(hasSkill?[{text:`${skillLabel} — critical push; ${skillOut} in sight`,days:MON_FRI}]:[]),
+          {text:"Environment score",days:SUN},
+        ],
+        results:[{text:"Final touches done ✓"},...(hasSkill?[{text:`${skillLabel} approaching completion ✓`}]:[{text:"Environment score 8+ ✓"}])] },
+      { weekNumber:7, cumulativePercentage:WK_PCT[6],
+        description:`${hasSkill?skillOut+" DELIVERED":"Workspace complete"} — AckNight Jun 14; testimony ready`,
+        actions:[
+          {text:hasSkill?`Complete and deliver ${skillOut}`:"Take final 'after' photos — before/after transformation documented",days:MON_FRI},
+          {text:"AckNight Jun 14 — share your workspace transformation story",days:[6]},
+          {text:"Write: 'My environment now reflects my ambition — here is the evidence'",days:[4,5]},
+          {text:`Ask: 'Would you know from my ${label} that I take ${isStudent?"my studies":"my work"} seriously?'`,days:[3]},
+          {text:"Environment score — target 8+",days:SUN},
+        ],
+        results:[{text:hasSkill?`${skillOut} DELIVERED ✓`:"Transformation complete ✓"},{text:"Testimony ready"},{text:"AckNight shared ✓"}] },
+      { weekNumber:8, cumulativePercentage:WK_PCT[7],
+        description:`Final score confirmed; evidence compiled; testimony submitted; Graduation Jun 20–21`,
+        actions:[
+          {text:"Compile transformation: before photos → after photos → environment scores → outcomes",days:[1,2]},
+          {text:"Write final testimony: 'I built a space that performs as hard as I do'",days:[2,3]},
+          {text:"Graduation Jun 20–21 — your workspace waits for you when you return",days:[5,6]},
+          {text:"Submit testimony by Jun 19",days:[4]},
+        ],
+        results:[{text:"Environment score 8+ confirmed ✓"},...(hasSkill?[{text:`${skillOut} complete ✓`}]:[{text:"All target outcomes met ✓"}]),{text:"Testimony submitted ✓"}] },
+    ];
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Export all templates
 // ─────────────────────────────────────────────────────────────────────────────
 export const GOAL_TEMPLATES: GoalTemplate[] = [
@@ -904,10 +1355,12 @@ export const GOAL_TEMPLATES: GoalTemplate[] = [
   personalBeingness,
   personalRelationshipDeepen,
   personalRelationshipPrepare,
+  personalExperienceGoal,
   professionalIncomeEmployed,
   professionalIncomeExploring,
   professionalCareerBeingness,
   professionalSkills,
+  professionalWorkspace,
 ];
 
 // Sub-category selection → template ID mapping
@@ -918,10 +1371,12 @@ export const SUBCATEGORY_TO_TEMPLATE: Record<string, string> = {
   "beingness":                   "personal-beingness",
   "relationship-deepen":         "personal-relationship-deepen",
   "relationship-prepare":        "personal-relationship-prepare",
+  "experience-goal":             "personal-experience-goal",
   "income-employed":             "professional-income-employed",
   "income-exploring":            "professional-income-exploring",
   "career-beingness":            "professional-career-beingness",
   "skills":                      "professional-skills",
+  "workspace-design":            "professional-workspace-design",
 };
 
 // Wheel area → suggested template(s)
@@ -930,10 +1385,10 @@ export const WHEEL_AREA_SUGGESTIONS: Record<string, string[]> = {
   "B": ["personal-beingness"],
   "C": ["personal-relationship-deepen"],
   "D": ["personal-relationship-prepare"],
-  "E": ["personal-beingness","personal-relationship-deepen"],
-  "F": ["personal-beingness","personal-relationship-deepen"],
+  "E": ["personal-relationship-deepen","personal-beingness"],
+  "F": ["personal-experience-goal","personal-beingness"],
   "G": ["professional-career-beingness"],
-  "H": ["professional-career-beingness"],
+  "H": ["professional-workspace-design","professional-career-beingness"],
   "I": ["professional-skills"],
   "J": ["professional-income-employed","professional-income-exploring"],
   "K": ["professional-career-beingness","professional-skills"],

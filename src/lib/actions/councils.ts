@@ -1,21 +1,23 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { councils, users, goals, weeklyMilestones, declarations, attendance } from "@/lib/db/schema";
+import { councils, users, goals, weeklyMilestones, declarations, attendance, directMessages } from "@/lib/db/schema";
 import { getAuthUser, isHeadCoach,
 } from "@/lib/auth/jwt";
-import { eq, inArray, desc } from "drizzle-orm";
+import { eq, inArray, desc, isNull, and } from "drizzle-orm";
 import { createId } from "@paralleldrive/cuid2";
 import { getCurrentWeek, getUserProgress } from "@/lib/progress";
 
 export async function getCouncilsWithStats() {
   const user = await getAuthUser();
-  if (!user || (user.role !== "head_coach" && user.role !== "coach")) {
+  if (!user || (user.role !== "head_coach" && user.role !== "coach" && user.role !== "facilitator")) {
     throw new Error("Forbidden");
   }
 
   const currentWeek = await getCurrentWeek();
-  const allCouncils = await db.select().from(councils);
+  const allCouncils = (user.role === "head_coach" || user.role === "facilitator")
+    ? await db.select().from(councils)
+    : await db.select().from(councils).where(eq(councils.coachId, user.userId));
 
   // Get head coach name for display
   const [headCoach] = await db
@@ -58,6 +60,7 @@ export async function getCouncilsWithStats() {
       id: council.id,
       name: council.name,
       theme: council.theme,
+      coachId: council.coachId,
       coachName: headCoach?.name || null,
       adminCoachName: adminCoach[0]?.name || null,
       leaderName: leader?.name || null,
@@ -101,20 +104,24 @@ export async function getCouncilStudents(councilId: string | null) {
   const members = await db
     .select()
     .from(users)
-    .where(eq(users.councilId, targetCouncilId));
+    .where(and(eq(users.councilId, targetCouncilId), eq(users.role, "student")));
 
   // Fetch all declarations for these members — order by newest first so the Map keeps the latest per user
   const memberIds = members.map((m) => m.id);
   const memberDeclarations = memberIds.length > 0
-    ? await db.select({ userId: declarations.userId, text: declarations.text })
+    ? await db.select({ userId: declarations.userId, text: declarations.text, approvalStatus: declarations.approvalStatus })
         .from(declarations)
         .where(inArray(declarations.userId, memberIds))
         .orderBy(desc(declarations.updatedAt))
     : [];
   // Build map: first occurrence per userId = most recent (due to DESC order)
   const declMap = new Map<string, string>();
+  const declApprovalMap = new Map<string, string>();
   for (const d of memberDeclarations) {
-    if (!declMap.has(d.userId)) declMap.set(d.userId, d.text);
+    if (!declMap.has(d.userId)) {
+      declMap.set(d.userId, d.text);
+      declApprovalMap.set(d.userId, d.approvalStatus);
+    }
   }
 
   // Fetch all attendance rows for all members in one query
@@ -126,6 +133,36 @@ export async function getCouncilStudents(councilId: string | null) {
   for (const row of memberAttendanceRows) {
     if (!attMap.has(row.userId)) attMap.set(row.userId, []);
     attMap.get(row.userId)!.push(row);
+  }
+
+  // Batch-fetch unread DM counts: messages sent by students (not by coach) that are unread
+  const unreadDmRows = memberIds.length > 0
+    ? await db.select({ studentId: directMessages.studentId, senderId: directMessages.senderId })
+        .from(directMessages)
+        .where(and(inArray(directMessages.studentId, memberIds), isNull(directMessages.readAt)))
+    : [];
+  const unreadDmMap = new Map<string, number>();
+  for (const row of unreadDmRows) {
+    // Only count messages sent BY the student (not the coach replying)
+    if (memberIds.includes(row.senderId)) {
+      unreadDmMap.set(row.studentId, (unreadDmMap.get(row.studentId) ?? 0) + 1);
+    }
+  }
+
+  // Batch-fetch support_needed for current week across all members
+  const supportRows = memberIds.length > 0
+    ? await db
+        .select({ userId: goals.userId, supportNeeded: weeklyMilestones.supportNeeded })
+        .from(weeklyMilestones)
+        .innerJoin(goals, eq(weeklyMilestones.goalId, goals.id))
+        .where(and(
+          inArray(goals.userId, memberIds),
+          eq(weeklyMilestones.weekNumber, currentWeek)
+        ))
+    : [];
+  const supportMap = new Map<string, boolean>();
+  for (const row of supportRows) {
+    if (row.supportNeeded?.trim()) supportMap.set(row.userId, true);
   }
 
   const students = [];
@@ -151,6 +188,7 @@ export async function getCouncilStudents(councilId: string | null) {
       name: member.name,
       email: member.email,
       declaration: declMap.get(member.id) ?? null,
+      declarationApprovalStatus: declApprovalMap.get(member.id) ?? null,
       enrollmentProgress: prog.enrollment,
       personalProgress: prog.personal,
       professionalProgress: prog.professional,
@@ -162,21 +200,35 @@ export async function getCouncilStudents(councilId: string | null) {
       professionalCurrentWeek: prog.professionalCurrentWeek,
       weeklyMeetingAttendance,
       weeklyCallAttendance,
+      unreadDmCount: unreadDmMap.get(member.id) ?? 0,
+      hasSupportNeeded: supportMap.get(member.id) ?? false,
     });
+  }
+
+  // Fetch coach name for HC chat
+  const coachId = council?.coachId || null;
+  let coachName: string | null = null;
+  if (coachId) {
+    const [coachUser] = await db.select({ name: users.name }).from(users).where(eq(users.id, coachId)).limit(1);
+    coachName = coachUser?.name || null;
   }
 
   return {
     councilName: council?.name || "Unknown",
+    coachId,
+    coachName,
     students,
   };
 }
 
 export async function getCouncilList() {
   const user = await getAuthUser();
-  if (!user || (user.role !== "head_coach" && user.role !== "coach")) {
+  if (!user || (user.role !== "head_coach" && user.role !== "coach" && user.role !== "facilitator")) {
     throw new Error("Forbidden");
   }
-  const rows = await db.select({ id: councils.id, name: councils.name }).from(councils);
+  const rows = user.role === "coach"
+    ? await db.select({ id: councils.id, name: councils.name }).from(councils).where(eq(councils.coachId, user.userId))
+    : await db.select({ id: councils.id, name: councils.name }).from(councils);
   return rows;
 }
 

@@ -223,8 +223,8 @@ function StepCard({
                   <button onClick={() => { setEditing(false); setDraft(step.text); }} className="text-xs font-semibold px-3 py-1.5 rounded-lg min-h-[36px] bg-muted text-muted-foreground hover:bg-muted/80 transition-colors">Cancel</button>
                 </>
               ) : (
-                <button onClick={() => { setEditing(true); setDraft(step.text); }} className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg min-h-[36px] bg-muted text-muted-foreground hover:bg-muted/80 transition-colors">
-                  <Pencil className="h-3.5 w-3.5" />Edit
+                <button onClick={() => { setEditing(true); setDraft(step.text); }} className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-md bg-muted border border-border text-foreground hover:bg-red-500/10 hover:text-red-500 hover:border-red-400/50 transition-colors">
+                  <Pencil className="h-3.5 w-3.5" /> Edit
                 </button>
               )}
               <div className="relative">

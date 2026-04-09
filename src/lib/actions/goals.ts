@@ -89,6 +89,7 @@ export async function getStudentGoals(studentId: string) {
         cumulativePercentage: m.cumulativePercentage,
         approvalStatus: m.approvalStatus,
         approvedBy: m.approvedBy,
+        reviewNote: m.reviewNote,
       })),
     });
   }
@@ -110,15 +111,13 @@ export async function updateGoal(
     .limit(1);
   if (!goal) throw new Error("Goal not found");
 
-  // Owner can edit their own goal - resets approval
+  // Owner can edit their own goal - does NOT auto-reset approval
+  // Student must explicitly submit for review via submitGoalForReview()
   if (goal.userId === user.userId) {
     await db
       .update(goals)
       .set({
         ...updates,
-        approvalStatus: "pending",
-        approvedBy: null,
-        approvedAt: null,
         updatedAt: new Date(),
       })
       .where(eq(goals.id, goalId));

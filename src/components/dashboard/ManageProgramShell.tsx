@@ -1,21 +1,23 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { X, Calendar, Users, GraduationCap, UserCog, Database } from "lucide-react";
+import { X, Calendar, Users, GraduationCap, UserCog, Database, ClipboardList } from "lucide-react";
 import { ManageCouncilsPanel } from "./ManageCouncilsPanel";
 import { ManageStudentsPanel } from "./ManageStudentsPanel";
 import { ManageCoachesPanel } from "./ManageCoachesPanel";
+import { ManageFacilitatorsPanel } from "./ManageFacilitatorsPanel";
 import { ManageProgramPanel } from "./ManageProgramPanel";
 import { DataSyncPage } from "./DataSyncPage";
 
-type Tab = "schedule" | "councils" | "students" | "coaches" | "data";
+type Tab = "schedule" | "councils" | "students" | "coaches" | "facilitators" | "data";
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
-  { id: "coaches",   label: "Coaches",   icon: <UserCog       className="h-3.5 w-3.5" /> },
-  { id: "students",  label: "Students",  icon: <GraduationCap className="h-3.5 w-3.5" /> },
-  { id: "councils",  label: "Councils",  icon: <Users         className="h-3.5 w-3.5" /> },
-  { id: "schedule",  label: "Schedule",  icon: <Calendar      className="h-3.5 w-3.5" /> },
-  { id: "data",      label: "Data",      icon: <Database      className="h-3.5 w-3.5" /> },
+  { id: "coaches",       label: "Coaches",      icon: <UserCog        className="h-3.5 w-3.5" /> },
+  { id: "facilitators",  label: "Facilitators", icon: <ClipboardList  className="h-3.5 w-3.5" /> },
+  { id: "students",      label: "Students",     icon: <GraduationCap  className="h-3.5 w-3.5" /> },
+  { id: "councils",      label: "Councils",     icon: <Users          className="h-3.5 w-3.5" /> },
+  { id: "schedule",      label: "Schedule",     icon: <Calendar       className="h-3.5 w-3.5" /> },
+  { id: "data",          label: "Data",         icon: <Database       className="h-3.5 w-3.5" /> },
 ];
 
 interface ManageProgramShellProps {
@@ -79,6 +81,9 @@ export function ManageProgramShell({
         )}
         {activeTab === "coaches" && (
           <ManageCoachesPanel onChanged={handleChanged} refreshKey={refreshCount} />
+        )}
+        {activeTab === "facilitators" && (
+          <ManageFacilitatorsPanel onChanged={handleChanged} refreshKey={refreshCount} />
         )}
         {activeTab === "data" && (
           <DataSyncPage embedded onClose={onClose} />

@@ -6,7 +6,7 @@ import {
 } from "@/lib/actions/councils";
 import { addStudent, updateStudent, deleteStudent } from "@/lib/actions/user-management";
 import {
-  GraduationCap, UserPlus, Trash2, Search, X, AlertTriangle, Check, Plus, Pencil,
+  GraduationCap, UserPlus, Trash2, Search, X, AlertTriangle, Check, Plus, Pencil, Upload,
 } from "lucide-react";
 
 type StudentFlat = {
@@ -47,6 +47,11 @@ export function ManageStudentsPanel({ onClose, onChanged, embedded = false, refr
   // Delete
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // APA import
+  const [importingId, setImportingId] = useState<string | null>(null);
+  const [importResult, setImportResult] = useState<{ id: string; msg: string; ok: boolean } | null>(null);
+  const [pendingImport, setPendingImport] = useState<{ id: string; studentName: string; file: File } | null>(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -114,6 +119,31 @@ export function ManageStudentsPanel({ onClose, onChanged, embedded = false, refr
       setTransferDraft((prev) => { const n = { ...prev }; delete n[student.id]; return n; });
       await reload(); onChanged?.();
     } finally { setTransferringId(null); }
+  }
+
+  async function handleApaUpload(studentId: string, file: File) {
+    setImportingId(studentId);
+    setImportResult(null);
+    try {
+      const text = await file.text();
+      const apaData = JSON.parse(text);
+      const res = await fetch("/api/import/apa", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ studentId, apaData }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setImportResult({ id: studentId, msg: data.message, ok: true });
+        onChanged?.();
+      } else {
+        setImportResult({ id: studentId, msg: data.error || "Import failed", ok: false });
+      }
+    } catch (e) {
+      setImportResult({ id: studentId, msg: e instanceof Error ? e.message : "Invalid JSON file", ok: false });
+    } finally {
+      setImportingId(null);
+    }
   }
 
   async function handleDelete(id: string) {
@@ -276,18 +306,62 @@ export function ManageStudentsPanel({ onClose, onChanged, embedded = false, refr
                     )}
                   </div>
 
-                  {/* Edit / Delete */}
+                  {/* Edit / Upload APA / Delete */}
                   <div className="flex items-center gap-1 shrink-0">
                     <button onClick={() => isEditing ? setEditingId(null) : startEdit(s)}
-                      className={`p-1.5 rounded-lg transition-colors ${isEditing ? "bg-primary/10 text-primary" : "hover:bg-muted text-muted-foreground hover:text-foreground"}`}>
+                      className={`p-1.5 rounded-md border transition-colors ${isEditing ? "bg-primary/10 text-primary border-primary/30" : "bg-muted border-border text-muted-foreground hover:bg-red-500/10 hover:text-red-500 hover:border-red-400/50"}`}>
                       <Pencil className="h-3.5 w-3.5" />
                     </button>
+                    <label
+                      title="Upload APA Goals (JSON)"
+                      className={`p-1.5 rounded-md border cursor-pointer transition-colors bg-muted border-border text-muted-foreground hover:bg-primary/10 hover:text-primary hover:border-primary/40 ${importingId === s.id ? "opacity-50 pointer-events-none" : ""}`}
+                    >
+                      {importingId === s.id
+                        ? <span className="text-[10px] px-1">…</span>
+                        : <Upload className="h-3.5 w-3.5" />
+                      }
+                      <input
+                        type="file"
+                        accept=".json"
+                        className="hidden"
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) setPendingImport({ id: s.id, studentName: s.name || s.email, file: f });
+                          e.target.value = "";
+                        }}
+                      />
+                    </label>
                     <button onClick={() => setConfirmDeleteId(isConfirmDelete ? null : s.id)}
                       className={`p-1.5 rounded-lg transition-colors ${isConfirmDelete ? "bg-destructive/10 text-destructive" : "hover:bg-muted text-muted-foreground hover:text-destructive"}`}>
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   </div>
                 </div>
+
+                {/* APA import — confirm before overwriting */}
+                {pendingImport?.id === s.id && (
+                  <div className="border-t border-amber-500/20 bg-amber-500/5 px-4 py-2 flex items-center gap-3">
+                    <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
+                    <p className="text-xs text-amber-700 dark:text-amber-400 flex-1">
+                      Re-import <strong>{pendingImport.file.name}</strong>? This will overwrite <strong>{pendingImport.studentName}&apos;s</strong> existing goals.
+                    </p>
+                    <button
+                      onClick={() => { handleApaUpload(pendingImport.id, pendingImport.file); setPendingImport(null); }}
+                      className="px-3 py-1 text-xs font-semibold bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors shrink-0"
+                    >
+                      Overwrite
+                    </button>
+                    <button onClick={() => setPendingImport(null)} className="text-xs text-muted-foreground hover:text-foreground shrink-0">Cancel</button>
+                  </div>
+                )}
+
+                {/* APA import result */}
+                {importResult?.id === s.id && (
+                  <div className={`border-t px-4 py-2 flex items-center justify-between text-xs ${importResult.ok ? "border-green-500/20 bg-green-500/5 text-green-600" : "border-destructive/20 bg-destructive/5 text-destructive"}`}>
+                    <span>{importResult.msg}</span>
+                    <button onClick={() => setImportResult(null)} className="ml-2 opacity-60 hover:opacity-100"><X className="h-3 w-3" /></button>
+                  </div>
+                )}
 
                 {/* Edit form */}
                 {isEditing && (

@@ -8,9 +8,10 @@ import { getBatchWeekInfo } from "@/lib/actions/attendance";
 import { GoalsTab } from "./GoalsTab";
 import { AttendanceTab } from "./AttendanceTab";
 import { FeedbackTab } from "./FeedbackTab";
-import { ActionPlannerTab } from "./ActionPlannerTab";
 import { PerformanceBanner } from "./PerformanceBanner";
 import { CoachNotesPanel } from "./CoachNotesPanel";
+import { AskMeChatTab } from "./AskMeChatTab";
+import { StudentProfileCard } from "./StudentProfileCard";
 import { ArrowLeft } from "lucide-react";
 import { useReminderNotifications } from "@/lib/hooks/useReminderNotifications";
 
@@ -18,7 +19,13 @@ interface StudentInfo {
   id: string;
   name: string | null;
   email: string;
+  pendingName: string | null;
   declaration: string | null;
+  pendingDeclarationId: string | null;
+  pendingDeclarationText: string | null;
+  buddyName: string | null;
+  councilName: string | null;
+  coachName: string | null;
   enrollmentProgress: number;
   personalProgress: number;
   professionalProgress: number;
@@ -28,6 +35,7 @@ interface StudentInfo {
   enrollmentCurrentWeek: number;
   personalCurrentWeek: number;
   professionalCurrentWeek: number;
+  unreadDmCount: number;
 }
 
 export function L3StudentDetail() {
@@ -37,13 +45,12 @@ export function L3StudentDetail() {
     activeL3Tab,
     setActiveL3Tab,
     setSelectedGoalType,
-    aiCoachInitialMessage,
-    setAiCoachInitialMessage,
     user,
   } = useNavigation();
   const [student, setStudent] = useState<StudentInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [weeklyHistory, setWeeklyHistory] = useState<WeekHistoryEntry[]>([]);
+  const [unreadChatCount, setUnreadChatCount] = useState(0);
   const [weekInfo, setWeekInfo] = useState<{ currentWeek: number; reportingWeek: number; batchStartDate: string; weeklyTargets: Record<string, { min: number; max: number }> }>({
     currentWeek: 7,
     reportingWeek: 6,
@@ -53,12 +60,10 @@ export function L3StudentDetail() {
 
   const targetId = selectedStudentId || user.userId;
   const isCoach = user.role === "coach" || user.role === "head_coach";
+  const isHC = user.role === "head_coach";
 
   // Browser push reminders for action steps and milestones
   useReminderNotifications(targetId);
-
-  // Pre-call notification: fires 10 min before scheduled group calls
-  const { minutesUntil: preCallMinutes } = usePreCallNotifications(isCoach);
 
   useEffect(() => {
     async function load() {
@@ -70,6 +75,7 @@ export function L3StudentDetail() {
         ]);
         setStudent(data);
         setWeeklyHistory(history);
+        setUnreadChatCount(data?.unreadDmCount ?? 0);
         setWeekInfo({ currentWeek: info.currentWeek, reportingWeek: info.reportingWeek, batchStartDate: info.batchStartDate, weeklyTargets: info.weeklyTargets });
       } catch (error) {
         console.error("Failed to load student:", error);
@@ -92,27 +98,25 @@ export function L3StudentDetail() {
 
   return (
     <div className="space-y-3">
-      {/* Compact header row */}
-      <div className="flex items-center gap-3 flex-wrap">
-        {isCoach && (
-          <button
-            onClick={() => setSelectedStudentId(null)}
-            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-full bg-muted hover:bg-muted/70 border border-border transition-colors shrink-0"
-          >
-            <ArrowLeft className="h-3 w-3" />
-            Council Summary
-          </button>
-        )}
-        <div className="min-w-0">
-          <div className="flex items-baseline gap-2 flex-wrap">
-            <h2 className="text-xl font-bold leading-tight">{student.name || student.email}</h2>
-            <span className="text-xs text-muted-foreground">Student Summary</span>
-          </div>
-          {student.declaration
-            ? <p className="text-xs text-muted-foreground italic mt-0.5">"{student.declaration}"</p>
-            : null}
-        </div>
-      </div>
+      {/* Back button for coaches */}
+      {isCoach && (
+        <button
+          onClick={() => setSelectedStudentId(null)}
+          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-full bg-muted hover:bg-muted/70 border border-border transition-colors"
+        >
+          <ArrowLeft className="h-3 w-3" />
+          Council Summary
+        </button>
+      )}
+
+      {/* Student Profile Card */}
+      <StudentProfileCard
+        student={student}
+        isCoach={isCoach}
+        onRefresh={() => {
+          getStudentDetail(targetId).then(setStudent).catch(console.error);
+        }}
+      />
 
       {/* Performance Banner */}
       <PerformanceBanner
@@ -139,12 +143,6 @@ export function L3StudentDetail() {
       <div className="border-b border-border">
         <div className="flex gap-4 overflow-x-auto">
           <button
-            onClick={() => setActiveL3Tab("action-planner")}
-            className={`pb-3 text-base font-semibold border-b-2 transition-colors whitespace-nowrap ${activeL3Tab === "action-planner" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}
-          >
-            Action Planner
-          </button>
-          <button
             onClick={() => setActiveL3Tab("goals")}
             className={`pb-3 text-base font-semibold border-b-2 transition-colors whitespace-nowrap ${activeL3Tab === "goals" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}
           >
@@ -156,51 +154,17 @@ export function L3StudentDetail() {
           >
             Attendance
           </button>
-          <button
-            onClick={() => setActiveL3Tab("calendar")}
-            className={`pb-3 text-base font-semibold border-b-2 transition-colors whitespace-nowrap ${activeL3Tab === "calendar" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}
-          >
-            Action Calendar
-          </button>
-          {isCoach && (
+          {!isHC && (
             <button
-              onClick={() => setActiveL3Tab("journey")}
-              className={`pb-3 text-base font-semibold border-b-2 transition-colors whitespace-nowrap ${activeL3Tab === "journey" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}
+              onClick={() => { setActiveL3Tab("ask-me-chat"); setUnreadChatCount(0); }}
+              className={`relative pb-3 text-base font-semibold border-b-2 transition-colors whitespace-nowrap ${activeL3Tab === "ask-me-chat" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}
             >
-              📔 Adventure Journal
-            </button>
-          )}
-          {isCoach && (
-            <button
-              onClick={() => setActiveL3Tab("ask-ai")}
-              className={`pb-3 text-base font-semibold border-b-2 transition-colors flex items-center gap-1.5 whitespace-nowrap ${activeL3Tab === "ask-ai" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}
-            >
-              <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-primary/15 text-primary text-[9px] font-bold">AI</span>
-              Ask AI<BetaPill />
-            </button>
-          )}
-          {isCoach && (
-            <button
-              onClick={() => setActiveL3Tab("feedback")}
-              className={`pb-3 text-base font-semibold border-b-2 transition-colors whitespace-nowrap ${activeL3Tab === "feedback" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}
-            >
-              AI Post Assessment (for LEAP 99 Coaches only)
-            </button>
-          )}
-          {isCoach && (
-            <button
-              onClick={() => setActiveL3Tab("ai-coach")}
-              className={`pb-3 text-base font-semibold border-b-2 transition-colors whitespace-nowrap ${activeL3Tab === "ai-coach" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}
-            >
-              🎙 AI Coach<BetaPill />
-            </button>
-          )}
-          {isCoach && (
-            <button
-              onClick={() => setActiveL3Tab("voice-coach")}
-              className={`pb-3 text-base font-semibold border-b-2 transition-colors whitespace-nowrap ${activeL3Tab === "voice-coach" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}
-            >
-              🤖 Voice AI Coach<BetaPill />
+              {isCoach ? "💬 Ask Coachee Chat" : "💬 Ask Coach Chat"}
+              {unreadChatCount > 0 && (
+                <span className="absolute -top-2 -right-4 min-w-[20px] h-5 flex items-center justify-center rounded-full bg-red-600 text-white text-[11px] font-bold px-1.5 shadow-md ring-2 ring-red-400/50">
+                  {unreadChatCount > 9 ? "9+" : unreadChatCount}
+                </span>
+              )}
             </button>
           )}
         </div>
@@ -213,10 +177,10 @@ export function L3StudentDetail() {
 
       {/* Tab content */}
       {activeL3Tab === "goals" ? (
-        <GoalsTab studentId={targetId} />
+        <GoalsTab studentId={targetId} readOnly={isHC} />
       ) : activeL3Tab === "attendance" ? (
         <div className="space-y-8">
-          <AttendanceTab studentId={targetId} />
+          <AttendanceTab studentId={targetId} readOnly={isHC} />
           <div>
             <div className="flex items-center gap-3 mb-4">
               <div className="h-px flex-1 bg-border" />
@@ -226,69 +190,13 @@ export function L3StudentDetail() {
             <FeedbackTab studentId={targetId} view="attendance" />
           </div>
         </div>
-      ) : activeL3Tab === "action-planner" ? (
-        <ActionPlannerTab studentId={targetId} />
-      ) : activeL3Tab === "calendar" ? (
-        <StudentCalendarWidget
-          studentId={targetId}
-          currentWeek={weekInfo.currentWeek}
-          batchStartDate={weekInfo.batchStartDate}
-        />
-      ) : activeL3Tab === "feedback" ? (
-        <FeedbackTab studentId={targetId} view="assessments" />
-      ) : activeL3Tab === "ask-ai" ? (
-        <AskAITab
-          studentContext={{
-            studentName: student.name?.split(" ")[0] ?? student.email,
-            enrollmentResults: student.enrollmentResults,
-            personalResults: student.personalResults,
-            professionalResults: student.professionalResults,
-            enrollmentCurrentWeek: student.enrollmentCurrentWeek,
-            personalCurrentWeek: student.personalCurrentWeek,
-            professionalCurrentWeek: student.professionalCurrentWeek,
-            reportingWeek: weekInfo.reportingWeek,
-          }}
-          initialMessage={aiCoachInitialMessage}
-          onInitialMessageSent={() => setAiCoachInitialMessage(null)}
-          coachSession={isCoach ? {
-            studentId: targetId,
-            studentName: student.name?.split(" ")[0] ?? student.email,
-            weekNumber: weekInfo.reportingWeek,
-          } : undefined}
-        />
-      ) : activeL3Tab === "journey" ? (
-        <JourneyJournalTab
+      ) : activeL3Tab === "ask-me-chat" && !isHC ? (
+        <AskMeChatTab
           studentId={targetId}
           studentName={student.name || student.email}
-          currentWeek={weekInfo.currentWeek}
-          isCoach={isCoach}
-          preCallMinutes={preCallMinutes}
-        />
-      ) : activeL3Tab === "ai-coach" ? (
-        <AICoachTab
-          studentId={targetId}
-          studentName={student.name?.split(" ")[0] ?? student.email}
-          weekNumber={weekInfo.reportingWeek}
-          onSendToAskAI={(msg) => { setAiCoachInitialMessage(msg); setActiveL3Tab("ask-ai"); }}
-        />
-      ) : activeL3Tab === "voice-coach" ? (
-        <VoiceAICoachTab
-          students={[{ id: targetId, name: student.name }]}
-          defaultStudentId={targetId}
-          weekNumber={weekInfo.reportingWeek}
-          studentContext={{
-            studentName: student.name?.split(" ")[0] ?? student.email,
-            enrollmentResults: student.enrollmentResults,
-            personalResults: student.personalResults,
-            professionalResults: student.professionalResults,
-            enrollmentCurrentWeek: student.enrollmentCurrentWeek,
-            personalCurrentWeek: student.personalCurrentWeek,
-            professionalCurrentWeek: student.professionalCurrentWeek,
-            reportingWeek: weekInfo.reportingWeek,
-          }}
         />
       ) : (
-        <ActionPlannerTab studentId={targetId} />
+        <GoalsTab studentId={targetId} readOnly={isHC} />
       )}
     </div>
   );

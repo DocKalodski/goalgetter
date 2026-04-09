@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useActionState } from "react";
 import { login } from "@/lib/actions/auth";
 
@@ -20,12 +21,7 @@ export function LoginForm() {
       )}
 
       <div className="space-y-2">
-        <label
-          htmlFor="email"
-          className="text-sm font-medium leading-none"
-        >
-          Email
-        </label>
+        <label htmlFor="email" className="text-sm font-medium leading-none">Email</label>
         <input
           id="email"
           name="email"
@@ -37,12 +33,7 @@ export function LoginForm() {
       </div>
 
       <div className="space-y-2">
-        <label
-          htmlFor="password"
-          className="text-sm font-medium leading-none"
-        >
-          Password
-        </label>
+        <label htmlFor="password" className="text-sm font-medium leading-none">Password</label>
         <input
           id="password"
           name="password"

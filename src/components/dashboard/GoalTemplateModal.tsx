@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   X, ChevronLeft, ChevronRight, Check, Sparkles, BookOpen,
-  Users, Heart, Briefcase, AlertTriangle,
+  Users, Heart, Briefcase, AlertTriangle, ChevronDown,
 } from "lucide-react";
+import { keywordOverlap, smarterCompleteness, alignmentLevel } from "@/lib/utils/goal-utils";
 import {
   GOAL_TEMPLATES,
   WHEEL_AREA_SUGGESTIONS,
@@ -26,6 +27,7 @@ interface SubCategory {
 interface Props {
   goalType?: Category;
   wheelScores?: Record<string, number>;
+  declarationText?: string | null;
   onApply: (template: GoalTemplate, answers: Record<string, string>) => void;
   onClose: () => void;
 }
@@ -73,6 +75,12 @@ const SUBCATEGORIES: Record<Category, SubCategory[]> = {
       description: "Build the inner qualities you want to bring to a future relationship.",
       templateId: "personal-relationship-prepare",
     },
+    {
+      id: "experience-goal",
+      label: "The Experience Goal",
+      description: "Commit to a real experience you've been deferring — trip, adventure, bucket list, creative project. Live fully, not just productively.",
+      templateId: "personal-experience-goal",
+    },
   ],
   professional: [
     {
@@ -98,6 +106,12 @@ const SUBCATEGORIES: Record<Category, SubCategory[]> = {
       label: "Skill Building + Showcase",
       description: "Build a creative or professional skill over 8 weeks, capped by a real culminating event.",
       templateId: "professional-skills",
+    },
+    {
+      id: "workspace-design",
+      label: "Workspace by Design",
+      description: "Build a workspace that reflects your ambition — employed, studying, freelancing, or running a business. Environment + systems + routine.",
+      templateId: "professional-workspace-design",
     },
   ],
 };
@@ -131,12 +145,21 @@ function CategoryIcon({ category, className }: { category: Category; className?:
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export function GoalTemplateModal({ goalType, wheelScores, onApply, onClose }: Props) {
+export function GoalTemplateModal({ goalType, wheelScores, declarationText, onApply, onClose }: Props) {
   const [step, setStep] = useState<1 | 2 | 3 | 4>(goalType ? 2 : 1);
   const [category, setCategory] = useState<Category>(goalType ?? "enrollment");
   const [subCategoryId, setSubCategoryId] = useState<string | null>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [setupGoalCheck, setSetupGoalCheck] = useState<"yes" | "no" | null>(null);
+  const [expandedPreviewWeek, setExpandedPreviewWeek] = useState<number | null>(null);
+  // Per-week action selection: weekNumber → boolean[] (true = include on apply)
+  const [actionChecks, setActionChecks] = useState<Record<number, boolean[]>>({});
+  // Pre-flight edits
+  const [editedGoalStatement, setEditedGoalStatement] = useState<string>("");
+  const [editedWeekDescs, setEditedWeekDescs] = useState<Record<number, string>>({});
+  const [editedActionTexts, setEditedActionTexts] = useState<Record<string, string>>({});
+  const [editedActionDays, setEditedActionDays] = useState<Record<string, number[]>>({});
+  const [addedActions, setAddedActions] = useState<Record<number, Array<{text:string; days:number[]}>>>({});
 
   // Selected template
   const template = useMemo(() => {
@@ -155,6 +178,9 @@ export function GoalTemplateModal({ goalType, wheelScores, onApply, onClose }: P
   // Assembled goal statement for preview
   const goalStatementPreview = useMemo(() => {
     if (!smarterPreview) return "";
+    // Use template-provided full sentence if available
+    if (smarterPreview.goalStatement?.trim()) return smarterPreview.goalStatement.trim();
+    // Fallback: assemble from parts
     const s = smarterPreview.specificDetails?.trim();
     const m = smarterPreview.measurableCriteria?.trim();
     const t = smarterPreview.endDate?.trim();
@@ -169,6 +195,57 @@ export function GoalTemplateModal({ goalType, wheelScores, onApply, onClose }: P
     else if (e) parts.push(`I am driven by ${e.replace(/\.$/, "")}.`);
     return parts.join(" ");
   }, [smarterPreview]);
+
+  // Rich text for alignment comparison — all SMARTER fields concatenated
+  const alignmentTextPreview = useMemo(() => {
+    if (!smarterPreview) return "";
+    return [
+      smarterPreview.specificDetails,
+      smarterPreview.measurableCriteria,
+      smarterPreview.achievableResources,
+      smarterPreview.relevantAlignment,
+      smarterPreview.excitingMotivation,
+      smarterPreview.rewardingBenefits,
+    ].filter(Boolean).join(" ");
+  }, [smarterPreview]);
+
+  // Milestones preview (generated from answers)
+  const milestonesPreview = useMemo(() => {
+    if (!template) return [];
+    try { return template.milestones(answers); } catch { return []; }
+  }, [template, answers]);
+
+  // Initialize all action checkboxes to true when milestones change
+  useEffect(() => {
+    const init: Record<number, boolean[]> = {};
+    for (const wk of milestonesPreview) {
+      init[wk.weekNumber] = wk.actions.map(() => true);
+    }
+    setActionChecks(init);
+  }, [milestonesPreview]);
+
+  // Re-init goal statement when questionnaire answers change
+  useEffect(() => {
+    setEditedGoalStatement(goalStatementPreview);
+  }, [goalStatementPreview]);
+
+  // Re-init week/action edits when milestones change
+  useEffect(() => {
+    const descs: Record<number, string> = {};
+    const texts: Record<string, string> = {};
+    const days: Record<string, number[]> = {};
+    for (const wk of milestonesPreview) {
+      descs[wk.weekNumber] = wk.description;
+      wk.actions.forEach((a, idx) => {
+        texts[`${wk.weekNumber}-${idx}`] = a.text;
+        days[`${wk.weekNumber}-${idx}`] = a.days ?? [];
+      });
+    }
+    setEditedWeekDescs(descs);
+    setEditedActionTexts(texts);
+    setEditedActionDays(days);
+    setAddedActions({});
+  }, [milestonesPreview]);
 
   const wheelSuggestion = getWheelSuggestion(wheelScores, category);
 
@@ -216,7 +293,30 @@ export function GoalTemplateModal({ goalType, wheelScores, onApply, onClose }: P
           .join(", ");
       }
     }
-    onApply(template, cleanedAnswers);
+    // Wrap template applying all pre-flight edits
+    const filteredTemplate = {
+      ...template,
+      smarter: (a: Record<string, string>) => ({ ...template.smarter(a), goalStatement: editedGoalStatement || undefined }),
+      milestones: (a: Record<string, string>) =>
+        template.milestones(a).map((wk) => {
+          const base = wk.actions
+            .map((action, origIdx) => ({ action, origIdx }))
+            .filter(({ action }) => action.text?.trim())
+            .filter(({ origIdx }) => actionChecks[wk.weekNumber]?.[origIdx] !== false)
+            .map(({ action, origIdx }) => ({
+              ...action,
+              text: editedActionTexts[`${wk.weekNumber}-${origIdx}`] ?? action.text,
+              days: editedActionDays[`${wk.weekNumber}-${origIdx}`] ?? action.days ?? [],
+            }));
+          const extras = (addedActions[wk.weekNumber] ?? []).filter((a) => a.text.trim());
+          return {
+            ...wk,
+            description: editedWeekDescs[wk.weekNumber] ?? wk.description,
+            actions: [...base, ...extras],
+          };
+        }),
+    };
+    onApply(filteredTemplate, cleanedAnswers);
   }
 
   // ── Step 1: Category ──────────────────────────────────────────────────────
@@ -529,55 +629,283 @@ export function GoalTemplateModal({ goalType, wheelScores, onApply, onClose }: P
   function renderStep4() {
     if (!template || !smarterPreview) return null;
 
-    const fields = [
-      { letter: "S", label: "Specific", value: smarterPreview.specificDetails },
-      { letter: "M", label: "Measurable", value: smarterPreview.measurableCriteria },
-      { letter: "A", label: "Attainable", value: smarterPreview.achievableResources },
-      { letter: "R", label: "Risk", value: smarterPreview.relevantAlignment },
-      { letter: "T", label: "Time-bound", value: smarterPreview.endDate },
-      { letter: "E", label: "Exciting", value: smarterPreview.excitingMotivation },
-      { letter: "R", label: "Rewarding", value: smarterPreview.rewardingBenefits },
-    ];
+    // SMARTER completeness badge
+    const { score: smarterScore, checks: smarterChecks } = smarterCompleteness(smarterPreview);
+    const declScore = declarationText ? keywordOverlap(goalStatementPreview, declarationText) : null;
+    const declLevel = declScore !== null ? alignmentLevel(declScore) : null;
 
     return (
       <div className="space-y-5">
         <div>
           <div className="flex items-center gap-2 mb-1">
             <Sparkles className="h-4 w-4 text-primary" />
-            <h3 className="text-lg font-bold">Your Proposed Goal</h3>
+            <h3 className="text-lg font-bold">Here&apos;s what your goal will look like</h3>
           </div>
           <p className="text-xs text-muted-foreground">
-            Review and confirm — all fields are fully editable after you apply.
+            This is exactly how it will appear in your Goals tab — fully editable after you apply.
           </p>
         </div>
 
-        {/* Goal Statement */}
-        <div className="rounded-xl bg-primary/5 border border-primary/20 p-4">
-          <p className="text-xs font-bold text-primary uppercase tracking-widest mb-2">Goal Statement</p>
-          <p className="text-sm font-semibold leading-relaxed text-foreground">
-            {goalStatementPreview || "Fill in the questionnaire to see your goal statement."}
-          </p>
-        </div>
+        {/* ROW 1 — Goal card (mirrors GoalsTab goal card) */}
+        <div className="bg-card rounded-xl border border-border overflow-hidden">
+          <div className="px-4 pt-3 pb-2 border-b border-border">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Goal Statement</p>
+          </div>
+          <div className="p-4 space-y-3">
+            {/* Goal statement text — editable pre-flight */}
+            <textarea
+              value={editedGoalStatement}
+              onChange={(e) => setEditedGoalStatement(e.target.value)}
+              rows={3}
+              placeholder="Fill in the questionnaire to see your goal."
+              className="w-full text-sm bg-transparent border border-input rounded-md px-3 py-2 resize-none focus:outline-none focus:ring-1 focus:ring-ring"
+            />
 
-        {/* SMARTER fields (collapsed but readable) */}
-        <div className="space-y-2">
-          <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">SMARTER Breakdown</p>
-          {fields.map((f, i) => (
-            <div key={i} className="flex gap-3 px-3 py-2.5 rounded-lg bg-card border border-border">
-              <span className="text-xs font-bold w-5 text-primary shrink-0 pt-0.5">{f.letter}</span>
-              <div className="min-w-0">
-                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide mb-0.5">{f.label}</p>
-                <p className="text-xs text-foreground leading-relaxed">{f.value || <span className="text-muted-foreground italic">Not filled</span>}</p>
-              </div>
+            {/* SMARTER + alignment pills (same as GoalsTab view mode) */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-muted border border-border font-mono">
+                {smarterChecks.map((c, i) => (
+                  <span key={i} className={c.filled ? "text-green-600" : "text-red-400"} title={c.label}>
+                    {c.letter}{c.filled ? "✓" : "✗"}
+                  </span>
+                ))}
+                <span className="ml-1 text-muted-foreground">{smarterScore}/7</span>
+              </span>
+              {declScore !== null && declLevel && (
+                <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border ${declLevel.bg} ${declLevel.color}`}>
+                  Declaration alignment: {declScore}%
+                </span>
+              )}
             </div>
-          ))}
+
+            {/* Values pills */}
+            {answers.essence && (
+              <div className="flex flex-wrap gap-1.5">
+                {answers.essence.split(",").map((v) => v.trim()).filter(Boolean).map((v) => (
+                  <span key={v} className="text-xs px-2.5 py-1 rounded-full bg-primary/10 text-primary border border-primary/20">{v}</span>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* 8-week summary note */}
+        {/* ROW 2 + ROW 3 — Milestones (mirrors WeeklyTracker) */}
+        <div className="bg-card rounded-xl border border-border overflow-hidden">
+          <div className="px-4 py-3 border-b border-border">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{milestonesPreview.length}-Week Milestones</p>
+          </div>
+          <div className="divide-y divide-border">
+            {milestonesPreview.map((wk, idx) => {
+              const weekNum = idx + 1;
+                const nonEmptyActions = wk.actions.filter((a) => a.text?.trim());
+              const pct = wk.cumulativePercentage ?? 0;
+              const isExpanded = expandedPreviewWeek === weekNum;
+
+              // Row 2 alignment pill
+              const row2Score = alignmentTextPreview && wk.description
+                ? keywordOverlap(wk.description, alignmentTextPreview) : null;
+              const row2Level = row2Score !== null ? alignmentLevel(row2Score) : null;
+
+              // Row 3 alignment pill
+              const actionsText = nonEmptyActions.map((a) => a.text).join(" ");
+              const row3Score = actionsText && wk.description
+                ? keywordOverlap(actionsText, wk.description) : null;
+              const row3Level = row3Score !== null ? alignmentLevel(row3Score) : null;
+
+              const ALL_DAYS = ["M","T","W","Th","F","Sa","Su"];
+
+              return (
+                <div key={weekNum}>
+                  {/* Week row header */}
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setExpandedPreviewWeek(isExpanded ? null : weekNum)}
+                    onKeyDown={(e) => e.key === "Enter" && setExpandedPreviewWeek(isExpanded ? null : weekNum)}
+                    className="flex items-center justify-between px-4 py-3 hover:bg-muted/30 transition-colors cursor-pointer"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="text-sm font-bold shrink-0">Wk {weekNum}</span>
+                      <span className="text-xs text-muted-foreground truncate max-w-[180px]">
+                        {wk.description || "No description"}
+                      </span>
+                      {isExpanded ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0 rotate-180" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {row2Score !== null && row2Level && (
+                        <span title="Goal-milestone alignment" className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${row2Level.bg} ${row2Level.color}`}>
+                          {row2Score}%
+                        </span>
+                      )}
+                      <span className="text-xs font-bold text-muted-foreground">{pct}%</span>
+                    </div>
+                  </div>
+
+                  {/* Expanded: editable week description + action steps (Row 3) */}
+                  {isExpanded && (
+                    <div className="px-4 pb-3 space-y-2 bg-muted/10">
+                      {/* Editable week description */}
+                      <input
+                        type="text"
+                        value={editedWeekDescs[wk.weekNumber] ?? wk.description}
+                        onChange={(e) => setEditedWeekDescs(prev => ({ ...prev, [wk.weekNumber]: e.target.value }))}
+                        placeholder="Week description…"
+                        onClick={(e) => e.stopPropagation()}
+                        className="w-full text-xs bg-background border border-border rounded px-2 py-1 mt-1 focus:outline-none focus:ring-1 focus:ring-primary"
+                      />
+                      {/* Action steps with origIdx tracking */}
+                      {(() => {
+                        const indexedActions = wk.actions
+                          .map((action, origIdx) => ({ action, origIdx }))
+                          .filter(({ action }) => action.text?.trim());
+                        return indexedActions.length > 0 ? (
+                          <div className="space-y-2 pt-1">
+                            {indexedActions.map(({ action, origIdx }) => {
+                              const dayKey = `${wk.weekNumber}-${origIdx}`;
+                              const assignedDays = editedActionDays[dayKey] ?? action.days ?? [];
+                              return (
+                                <div key={origIdx} className="space-y-1">
+                                  <div className="flex items-start gap-2">
+                                    <input
+                                      type="checkbox"
+                                      checked={actionChecks[wk.weekNumber]?.[origIdx] !== false}
+                                      onChange={() => setActionChecks(prev => {
+                                        const arr = [...(prev[wk.weekNumber] ?? wk.actions.map(() => true))];
+                                        arr[origIdx] = !arr[origIdx];
+                                        return { ...prev, [wk.weekNumber]: arr };
+                                      })}
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="rounded border-border mt-0.5 shrink-0 cursor-pointer accent-blue-500"
+                                    />
+                                    <input
+                                      type="text"
+                                      value={editedActionTexts[dayKey] ?? action.text}
+                                      onChange={(e) => setEditedActionTexts(prev => ({ ...prev, [dayKey]: e.target.value }))}
+                                      onClick={(e) => e.stopPropagation()}
+                                      className={`flex-1 text-xs bg-background border border-border rounded px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-primary ${actionChecks[wk.weekNumber]?.[origIdx] === false ? "opacity-40 line-through" : ""}`}
+                                    />
+                                  </div>
+                                  <div className="flex gap-1 pl-5 flex-wrap">
+                                    {ALL_DAYS.map((label, d) => {
+                                      const active = assignedDays.includes(d);
+                                      return (
+                                        <button
+                                          key={d}
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setEditedActionDays(prev => ({
+                                              ...prev,
+                                              [dayKey]: active
+                                                ? assignedDays.filter(x => x !== d)
+                                                : [...assignedDays, d].sort((a, b) => a - b),
+                                            }));
+                                          }}
+                                          className={`w-6 h-6 text-[9px] font-bold rounded flex items-center justify-center transition-colors ${
+                                            active
+                                              ? "bg-primary text-primary-foreground"
+                                              : "bg-muted/60 text-muted-foreground/60 hover:bg-primary/20 hover:text-primary"
+                                          }`}
+                                        >
+                                          {label}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-muted-foreground italic pt-1">No action steps for this week.</p>
+                        );
+                      })()}
+                      {/* Added actions */}
+                      {(addedActions[wk.weekNumber] ?? []).map((added, addIdx) => (
+                        <div key={`added-${addIdx}`} className="space-y-1">
+                          <div className="flex items-start gap-2">
+                            <input type="checkbox" checked disabled className="rounded border-border mt-0.5 shrink-0 opacity-30 accent-blue-500" />
+                            <input
+                              type="text"
+                              value={added.text}
+                              placeholder="New action step…"
+                              onChange={(e) => setAddedActions(prev => {
+                                const arr = [...(prev[wk.weekNumber] ?? [])];
+                                arr[addIdx] = { ...arr[addIdx], text: e.target.value };
+                                return { ...prev, [wk.weekNumber]: arr };
+                              })}
+                              onClick={(e) => e.stopPropagation()}
+                              className="flex-1 text-xs bg-background border border-primary/40 rounded px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-primary"
+                            />
+                          </div>
+                          <div className="flex gap-1 pl-5 flex-wrap">
+                            {ALL_DAYS.map((label, d) => {
+                              const active = added.days.includes(d);
+                              return (
+                                <button
+                                  key={d}
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setAddedActions(prev => {
+                                      const arr = [...(prev[wk.weekNumber] ?? [])];
+                                      arr[addIdx] = {
+                                        ...arr[addIdx],
+                                        days: active
+                                          ? arr[addIdx].days.filter(x => x !== d)
+                                          : [...arr[addIdx].days, d].sort((a, b) => a - b),
+                                      };
+                                      return { ...prev, [wk.weekNumber]: arr };
+                                    });
+                                  }}
+                                  className={`w-6 h-6 text-[9px] font-bold rounded flex items-center justify-center transition-colors ${
+                                    active
+                                      ? "bg-primary text-primary-foreground"
+                                      : "bg-muted/60 text-muted-foreground/60 hover:bg-primary/20 hover:text-primary"
+                                  }`}
+                                >
+                                  {label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                      {/* Add action step button */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setAddedActions(prev => ({
+                            ...prev,
+                            [wk.weekNumber]: [...(prev[wk.weekNumber] ?? []), { text: "", days: [] }],
+                          }));
+                        }}
+                        className="text-xs text-primary hover:text-primary/80 flex items-center gap-1 mt-1"
+                      >
+                        + Add action step
+                      </button>
+                      {/* Row 3 alignment pill */}
+                      {row3Score !== null && row3Level && (
+                        <div className="pt-1">
+                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${row3Level.bg} ${row3Level.color}`}>
+                            Actions-milestone alignment: {row3Score}%
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Note */}
         <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-muted/50 border border-border">
           <BookOpen className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
           <p className="text-xs text-muted-foreground">
-            Applying this template will pre-fill all 8 weekly milestones + action steps.{" "}
+            Applying this template will pre-fill all milestones + action steps.{" "}
             <span className="text-foreground font-medium">Everything is editable</span> after you apply.
           </p>
         </div>
@@ -594,7 +922,7 @@ export function GoalTemplateModal({ goalType, wheelScores, onApply, onClose }: P
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="bg-background rounded-2xl border border-border shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
+      <div className={`bg-background rounded-2xl border border-border shadow-2xl w-full max-h-[90vh] flex flex-col transition-all ${step === 4 ? "max-w-2xl" : "max-w-lg"}`}>
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
           <div className="flex items-center gap-3">

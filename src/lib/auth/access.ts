@@ -20,26 +20,15 @@ export async function canAccessStudent(
   }
 
   if (user.role === "coach") {
+    // Coaches can browse all councils in L2 — allow access to any student
+    // who is assigned to a council (has a councilId).
     const [student] = await db
       .select({ councilId: users.councilId })
       .from(users)
       .where(eq(users.id, targetStudentId))
       .limit(1);
 
-    if (!student?.councilId) return false;
-
-    const [council] = await db
-      .select({ id: councils.id })
-      .from(councils)
-      .where(
-        and(
-          eq(councils.id, student.councilId),
-          eq(councils.coachId, user.userId)
-        )
-      )
-      .limit(1);
-
-    return !!council;
+    return !!student?.councilId;
   }
 
   return false;

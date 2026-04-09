@@ -276,7 +276,7 @@ export function ManageCouncilsPanel({ batchId, onClose, onChanged, embedded = fa
                   <div className="flex items-center gap-1 shrink-0">
                     <button
                       onClick={() => isEditing ? setEditingId(null) : startEdit(council)}
-                      className={`p-1.5 rounded-lg transition-colors ${isEditing ? "bg-primary/10 text-primary" : "hover:bg-muted text-muted-foreground hover:text-foreground"}`}
+                      className={`p-1.5 rounded-md border transition-colors ${isEditing ? "bg-primary/10 text-primary border-primary/30" : "bg-muted border-border text-muted-foreground hover:bg-red-500/10 hover:text-red-500 hover:border-red-400/50"}`}
                       title="Edit"
                     >
                       <Pencil className="h-3.5 w-3.5" />

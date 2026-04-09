@@ -186,14 +186,14 @@ export function ManageProgramPanel({ initialOpenSection }: { initialOpenSection?
           { id: "post-debrief",name: "De-brief with Facis",                 date: "2026-06-22" },
         ],
         weeklyTargets: {
-          "1": { min: 0,  max: 0   },
-          "2": { min: 10, max: 19  },
-          "3": { min: 20, max: 34  },
-          "4": { min: 35, max: 54  },
-          "5": { min: 55, max: 74  },
-          "6": { min: 75, max: 94  },
-          "7": { min: 80, max: 94  },
-          "8": { min: 95, max: 100 },
+          "1": { min: 0,   max: 10  },  // Setup
+          "2": { min: 11,  max: 20  },  // FLEX 298 May 9–10
+          "3": { min: 21,  max: 30  },  // FLEX 299 + 1st Workshop
+          "4": { min: 31,  max: 45  },  // 2nd Intensive May 23–24
+          "5": { min: 46,  max: 60  },  // ALC pipeline
+          "6": { min: 61,  max: 80  },  // ALC 256 Jun 5–7
+          "7": { min: 81,  max: 99  },  // ALC 257 + AckNight
+          "8": { min: 100, max: 100 },  // Graduation
         },
       };
     });
@@ -285,7 +285,7 @@ export function ManageProgramPanel({ initialOpenSection }: { initialOpenSection?
         <div className="flex items-center gap-2">
           <Wand2 className="h-4 w-4 text-primary" />
           <span className="text-sm font-medium text-foreground">LEAP 99 Official Schedule</span>
-          <span className="text-xs text-muted-foreground hidden sm:inline">Apr 25 – Jun 22, 2026 · 8 weeks · UP BGC + SMX Aura</span>
+          <span className="text-xs text-muted-foreground hidden sm:inline">Apr 27 – Jun 21, 2026 · 8 weeks · UP BGC + SMX Aura</span>
         </div>
         <button
           type="button"

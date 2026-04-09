@@ -1,8 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { Pencil } from "lucide-react";
+import { Send } from "lucide-react";
 import { updateMilestone } from "@/lib/actions/milestones";
+import { submitMilestoneForReview, approveAllPendingMilestones, approveMilestone } from "@/lib/actions/approvals";
+import { toggleMilestoneCompletion } from "@/lib/actions/milestones";
+import { keywordOverlap, alignmentLevel } from "@/lib/utils/goal-utils";
 import { useNavigation } from "@/components/layout/DashboardShell";
 import { ApprovalBadge } from "./ApprovalBadge";
 
@@ -10,6 +13,7 @@ interface CheckItem {
   text: string;
   done: boolean;
   days?: number[];
+  approved?: boolean;
 }
 
 interface MilestoneData {
@@ -24,20 +28,23 @@ interface MilestoneData {
   supportNeeded?: string | null;
   approvalStatus?: string;
   approvedBy?: string | null;
+  reviewNote?: string | null;
+  isCompleted?: number | null;
 }
 
-// Returns the target label for a given week number (1-12)
-function getWeekTarget(weekNumber: number): string {
-  if (weekNumber === 1) return "Action Plan";
-  if (weekNumber >= 2 && weekNumber <= 10) {
-    const min = (weekNumber - 1) * 10;
-    const max = weekNumber * 10;
-    return `${min}–${max}%`;
+// Returns the target range label for a given week number
+function getWeekTarget(weekNumber: number, totalWeeks: number): string {
+  if (totalWeeks === 8) {
+    const labels: Record<number, string> = {
+      1: "0–25%", 2: "25–37.5%", 3: "37.5–50%", 4: "50–62.5%",
+      5: "62.5–75%", 6: "75–87.5%", 7: "87.5–100%", 8: "100%",
+    };
+    return labels[weekNumber] ?? `W${weekNumber}`;
   }
-  if (weekNumber === 11) return "100%";
-  if (weekNumber === 12) return "Enjoy";
-  // Beyond 12 weeks: continue pattern
-  return `${Math.min((weekNumber - 1) * 10, 100)}–100%`;
+  // fallback for non-8-week batches
+  const pct = Math.round((weekNumber / totalWeeks) * 100);
+  const prev = Math.round(((weekNumber - 1) / totalWeeks) * 100);
+  return weekNumber === totalWeeks ? "100%" : `${prev}–${pct}%`;
 }
 
 // Format a YYYY-MM-DD string as "Mon Feb 2"
@@ -91,6 +98,9 @@ export function WeeklyTracker({
   allGoals,
   activeTab: controlledTab,
   onTabChange,
+  onRefresh,
+  goalStatement,
+  totalWeeks: totalWeeksProp,
 }: {
   goalId: string;
   milestones: MilestoneData[];
@@ -104,7 +114,11 @@ export function WeeklyTracker({
   };
   activeTab?: "enrollment" | "personal" | "professional";
   onTabChange?: (tab: "enrollment" | "personal" | "professional") => void;
+  onRefresh?: () => void;
+  goalStatement?: string;
+  totalWeeks?: number;
 }) {
+
   const { user } = useNavigation();
   const [internalTab, setInternalTab] = useState<"enrollment" | "personal" | "professional">("enrollment");
   const activeTab = controlledTab ?? internalTab;
@@ -112,13 +126,21 @@ export function WeeklyTracker({
     setInternalTab(tab);
     onTabChange?.(tab);
   }
-  const [expandedWeek, setExpandedWeek] = useState<number | null>(currentWeek ?? null);
+  // All weeks always expanded — no accordion
 
   // Resolve active goalId + milestones (tabs vs single-pass)
   const activeGoalId = allGoals ? allGoals[activeTab].id : goalId;
   const activeMilestones = allGoals ? allGoals[activeTab].milestones : milestones;
   const activeTabMeta = GOAL_TABS.find((t) => t.key === activeTab)!;
   const [refreshKey, setRefreshKey] = useState(0);
+  // Approval state: keyed by milestone id (for coach approval UI loading state)
+  const [approvingMilestone, setApprovingMilestone] = useState<string | null>(null);
+  // Action step approval state: key = `${weekNumber}-${actionIndex}`
+  const [approvingActionStep, setApprovingActionStep] = useState<string | null>(null);
+  // Submit for review state: keyed by weekNumber
+  const [submitForms, setSubmitForms] = useState<Record<number, boolean>>({});
+  const [submitNotes, setSubmitNotes] = useState<Record<number, string>>({});
+  const [submittingWeek, setSubmittingWeek] = useState<number | null>(null);
   // Local edit state: keyed by weekNumber
   const [editValues, setEditValues] = useState<Record<number, { description: string; percentage: string }>>({});
   const [supportDrafts, setSupportDrafts] = useState<Record<number, string>>({});
@@ -130,14 +152,24 @@ export function WeeklyTracker({
     (user.role === "coach" || user.role === "head_coach") &&
     studentId !== user.userId;
 
-  // TODO: canEditMeta — for now includes head_coach, coach, and student (owner).
-  // FUTURE CHANGE: restrict to coach and student only (head_coach = view only).
+  // HC is view-only — only coach and the student themselves can edit milestones
   const canEditMeta =
     user.role === "coach" ||
-    user.role === "head_coach" ||
     studentId === user.userId;
 
-  const totalWeeks = 12;
+  const totalWeeks = totalWeeksProp ?? 8;
+  const [approvingAll, setApprovingAll] = useState(false);
+  const [expandedWeeks, setExpandedWeeks] = useState<Set<number>>(() => {
+    // Default: current week open, rest closed
+    return new Set(currentWeek ? [currentWeek] : [1]);
+  });
+  function toggleWeek(n: number) {
+    setExpandedWeeks(prev => {
+      const next = new Set(prev);
+      next.has(n) ? next.delete(n) : next.add(n);
+      return next;
+    });
+  }
 
   // First pass: build raw week data
   const rawWeeks = Array.from({ length: totalWeeks }, (_, i) => {
@@ -147,11 +179,11 @@ export function WeeklyTracker({
     const results: CheckItem[] = milestone?.results ? (() => { try { return JSON.parse(milestone.results!); } catch { return []; } })() : [];
     const nonEmptyActions = actions.filter((a) => a.text && a.text.trim() !== "");
     // Action Steps % — completion of this week's action items
-    const actionProgress = nonEmptyActions.length > 0
-      ? Math.round(nonEmptyActions.filter((a) => a.done).length / nonEmptyActions.length * 100)
-      : 0;
+    const actionDone = nonEmptyActions.filter((a) => a.done).length;
+    const actionTotal = nonEmptyActions.length;
+    const actionProgress = actionTotal > 0 ? Math.round(actionDone / actionTotal * 100) : 0;
     // Week fully done = all non-empty actions checked (used for cumulative fallback)
-    const weekDone = nonEmptyActions.length > 0 && nonEmptyActions.every((a) => a.done);
+    const weekDone = actionTotal > 0 && actionDone === actionTotal;
 
     return {
       weekNumber: week,
@@ -161,12 +193,16 @@ export function WeeklyTracker({
       results,
       cumulativePercentage: milestone?.cumulativePercentage || 0,
       actionProgress,
+      actionDone,
+      actionTotal,
       weekDone,
       supportNeeded: milestone?.supportNeeded || "",
       approvalStatus: milestone?.approvalStatus || "pending",
+      reviewNote: milestone?.reviewNote || null,
       hasContent: !!milestone?.milestoneDescription || actions.length > 0 || results.length > 0,
       weekStartDate: milestone?.weekStartDate || null,
       weekEndDate: milestone?.weekEndDate || null,
+      isCompleted: milestone?.isCompleted || null,
     };
   });
 
@@ -198,7 +234,7 @@ export function WeeklyTracker({
       await updateMilestone(activeGoalId, weekNumber, {
         [type]: JSON.stringify(updated),
       });
-      setRefreshKey((k) => k + 1);
+      onRefresh?.();
     } catch (error) {
       console.error("Failed to update:", error);
     }
@@ -224,7 +260,7 @@ export function WeeklyTracker({
         milestoneDescription: description,
         cumulativePercentage: percentage,
       });
-      setRefreshKey((k) => k + 1);
+      onRefresh?.();
     } catch (error) {
       console.error("Failed to save milestone meta:", error);
     }
@@ -233,7 +269,7 @@ export function WeeklyTracker({
   return (
     <div className="bg-card rounded-xl border border-border overflow-hidden" key={`${refreshKey}-${activeTab}`}>
       <div className="p-4 border-b border-border space-y-3">
-        <h3 className="text-lg font-bold">12-Week Progress Tracker</h3>
+        <h3 className="text-lg font-bold">{totalWeeks}-Week Progress Tracker</h3>
 
         {/* Goal tabs — only shown when allGoals provided */}
         {allGoals && (
@@ -241,7 +277,7 @@ export function WeeklyTracker({
             {GOAL_TABS.map((tab) => (
               <button
                 key={tab.key}
-                onClick={() => { handleTabChange(tab.key); setExpandedWeek(currentWeek ?? null); }}
+                onClick={() => { handleTabChange(tab.key); }}
                 className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold border-b-2 transition-colors -mb-px ${
                   activeTab === tab.key
                     ? `${tab.text} ${tab.border}`
@@ -265,49 +301,141 @@ export function WeeklyTracker({
             Action Steps — weekly tasks done
           </span>
         </div>
+
+        {/* Approve All — coach only, when there are pending milestones */}
+        {canApprove && user.role === "coach" && (() => {
+          const pendingCount = activeMilestones.filter(
+            (m) => m.approvalStatus === "pending" && (m.milestoneDescription || m.actions)
+          ).length;
+          if (pendingCount === 0) return null;
+          return (
+            <div className="flex items-center justify-between py-1.5 px-3 rounded-lg bg-amber-500/10 border border-amber-400/30">
+              <span className="text-xs font-semibold text-amber-700 dark:text-amber-400">
+                {pendingCount} milestone{pendingCount !== 1 ? "s" : ""} pending your approval
+              </span>
+              <button
+                type="button"
+                disabled={approvingAll}
+                onClick={async () => {
+                  setApprovingAll(true);
+                  try {
+                    await approveAllPendingMilestones(activeGoalId);
+                    setRefreshKey((k) => k + 1);
+                    onRefresh?.();
+                  } catch (e) {
+                    console.error("Approve all milestones failed:", e);
+                  } finally {
+                    setApprovingAll(false);
+                  }
+                }}
+                className="text-xs font-bold px-3 py-1 rounded-md bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 transition-colors"
+              >
+                {approvingAll ? "Approving…" : "Approve All"}
+              </button>
+            </div>
+          );
+        })()}
+
       </div>
       <div className="divide-y divide-border">
         {weeks.map((week) => {
           const isCurrent = currentWeek !== undefined && week.weekNumber === currentWeek;
-          const target = getWeekTarget(week.weekNumber);
+          const target = getWeekTarget(week.weekNumber, totalWeeks);
           const dateRange = getWeekDates(week.weekNumber, week.weekStartDate, week.weekEndDate, batchStartDate);
           const descVal = getEditValue(week.weekNumber, "description", week.description);
           const pctVal = getEditValue(week.weekNumber, "percentage", String(week.cumulativePercentage));
+          const isExpanded = expandedWeeks.has(week.weekNumber);
           return (
-          <div key={week.weekNumber} className={isCurrent ? "border-l-2 border-primary bg-primary/5" : ""}>
-            <div
-              role="button"
-              tabIndex={0}
-              onClick={() =>
-                setExpandedWeek(
-                  expandedWeek === week.weekNumber ? null : week.weekNumber
-                )
-              }
-              onKeyDown={(e) => e.key === "Enter" && setExpandedWeek(expandedWeek === week.weekNumber ? null : week.weekNumber)}
-              className="w-full flex items-center justify-between p-4 hover:bg-muted/30 transition-colors text-left cursor-pointer"
+          <div key={week.weekNumber} id={`week-${week.weekNumber}-${activeTab}`} className={isCurrent ? "border-l-2 border-primary bg-primary/5" : ""}>
+            <button
+              type="button"
+              onClick={() => toggleWeek(week.weekNumber)}
+              className="w-full flex items-center justify-between p-4 text-left hover:bg-muted/30 transition-colors"
             >
               <div className="flex items-center gap-3 flex-1 min-w-0">
-                <div className="shrink-0">
+                <div className="flex-1 min-w-0 pr-3">
                   <span className={`text-xl font-bold ${isCurrent ? "text-primary" : ""}`}>
                     Week {week.weekNumber}
                   </span>
                   <p className="text-xs text-muted-foreground leading-tight mt-0.5">
                     {dateRange}
                   </p>
+                  {week.description ? (
+                    <div className="flex items-start gap-2 mt-1.5">
+                      {/* Coach: approve checkbox | Student: 2-column (coach approval + done) */}
+                      {canApprove ? (
+                        // Coach view: single approve checkbox
+                        <input
+                          type="checkbox"
+                          checked={week.approvalStatus === "approved"}
+                          onChange={(e) => {
+                            if (week.id) {
+                              setApprovingMilestone(week.id);
+                              approveMilestone(week.id, e.target.checked ? "approved" : "rejected").finally(() => {
+                                setApprovingMilestone(null);
+                                onRefresh?.();
+                              });
+                            }
+                          }}
+                          disabled={approvingMilestone === week.id}
+                          title="Approve milestone"
+                          className="mt-0.5 rounded border-border shrink-0 cursor-pointer disabled:opacity-50"
+                        />
+                      ) : studentId === user.userId ? (
+                        // Student view: 2 checkboxes
+                        <div className="flex gap-1.5 mt-0.5">
+                          <input
+                            type="checkbox"
+                            checked={week.approvalStatus === "approved"}
+                            disabled
+                            title="Coach approval (read-only)"
+                            className="rounded border-border shrink-0 cursor-not-allowed opacity-50"
+                          />
+                          <input
+                            type="checkbox"
+                            checked={!!week.isCompleted}
+                            onChange={(e) => {
+                              if (week.id) {
+                                setApprovingMilestone(week.id);
+                                toggleMilestoneCompletion(week.id, e.target.checked).finally(() => {
+                                  setApprovingMilestone(null);
+                                  onRefresh?.();
+                                });
+                              }
+                            }}
+                            disabled={approvingMilestone === week.id}
+                            title="Mark as done"
+                            className="mt-0 rounded border-border shrink-0 cursor-pointer disabled:opacity-50"
+                          />
+                        </div>
+                      ) : null}
+                      <p className={`text-sm leading-snug line-clamp-2 flex-1 ${
+                        week.isCompleted ? "line-through text-muted-foreground" : "text-foreground/80"
+                      }`}>
+                        {week.description}
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground/50 italic mt-1">No milestone set</p>
+                  )}
                 </div>
                 {isCurrent && (
                   <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary shrink-0">
                     Current
                   </span>
                 )}
-                <span className="text-sm text-muted-foreground truncate max-w-[160px]">
-                  {week.description || "No description"}
-                </span>
-                {canEditMeta && (
-                  <Pencil className="h-5 w-5 text-muted-foreground shrink-0 ml-1" />
-                )}
               </div>
               <div className="flex items-center gap-3 shrink-0">
+                {/* Row 2 — milestone-goal alignment pill */}
+                {week.hasContent && week.description && goalStatement && (() => {
+                  const score = keywordOverlap(week.description, goalStatement);
+                  const lvl = alignmentLevel(score);
+                  return (
+                    <span title="Goal-milestone alignment" className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${lvl.bg} ${lvl.color}`}>
+                      {score}%
+                    </span>
+                  );
+                })()}
                 {/* Approval badge for milestones with content */}
                 {week.hasContent && week.id && (
                   <ApprovalBadge
@@ -315,7 +443,8 @@ export function WeeklyTracker({
                     type="milestone"
                     id={week.id}
                     canApprove={canApprove}
-                    onStatusChange={() => setRefreshKey((k) => k + 1)}
+                    reviewNote={week.reviewNote}
+                    onStatusChange={() => { setRefreshKey((k) => k + 1); onRefresh?.(); }}
                   />
                 )}
                 <div className="space-y-2 min-w-[180px]">
@@ -332,7 +461,14 @@ export function WeeklyTracker({
                   </div>
                   {/* Action Steps bar */}
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-medium text-muted-foreground">Action Steps</span>
+                    <span className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                      Action Steps
+                      {canApprove && week.actionTotal > 0 && (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600">
+                          {week.actionDone}/{week.actionTotal}
+                        </span>
+                      )}
+                    </span>
                     <span className="text-3xl font-bold text-emerald-500">{week.actionProgress}%</span>
                   </div>
                   <div className="w-full bg-muted rounded-full h-5">
@@ -343,47 +479,115 @@ export function WeeklyTracker({
                   </div>
                 </div>
               </div>
-            </div>
+              <span className="ml-2 shrink-0 text-muted-foreground">{isExpanded ? "▲" : "▼"}</span>
+            </button>
 
-            {expandedWeek === week.weekNumber && (
-              <div className="px-4 pb-4 space-y-4 bg-muted/10">
-                {/* Milestone description + cumulative % — editable for coach/HC/student */}
-                <div className="grid grid-cols-1 gap-3 pt-2">
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
-                      Milestone Description
-                    </p>
-                    {canEditMeta ? (
+            {isExpanded && <div className="px-4 pb-4 space-y-4 bg-muted/10">
+
+                {/* Milestone Description (edit) + Milestones/Results + Cumulative % */}
+                <div className="space-y-3 pt-2">
+                  <div className="flex items-start gap-2">
+                    {/* Coach: approve checkbox | Student: 2-column (coach approval + done) */}
+                    {canApprove ? (
+                      // Coach view: single approve checkbox
                       <input
-                        type="text"
-                        value={descVal}
-                        placeholder="Enter milestone description…"
-                        onChange={(e) => setEditField(week.weekNumber, "description", e.target.value)}
-                        onBlur={() => handleSaveMeta(week.weekNumber, descVal, pctVal)}
-                        className="w-full text-sm bg-background border border-border rounded-md px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary"
+                        type="checkbox"
+                        checked={week.approvalStatus === "approved"}
+                        onChange={(e) => {
+                          if (week.id) {
+                            setApprovingMilestone(week.id);
+                            approveMilestone(week.id, e.target.checked ? "approved" : "rejected").finally(() => {
+                              setApprovingMilestone(null);
+                              onRefresh?.();
+                            });
+                          }
+                        }}
+                        disabled={approvingMilestone === week.id}
+                        title="Approve milestone"
+                        className="mt-2 rounded border-border cursor-pointer shrink-0 disabled:opacity-50"
                       />
-                    ) : (
-                      <p className="text-sm">{week.description || <span className="text-muted-foreground italic">No description</span>}</p>
-                    )}
+                    ) : studentId === user.userId ? (
+                      // Student view: 2 checkboxes
+                      <div className="flex gap-1.5 mt-2">
+                        <input
+                          type="checkbox"
+                          checked={week.approvalStatus === "approved"}
+                          disabled
+                          title="Coach approval (read-only)"
+                          className="rounded border-border shrink-0 cursor-not-allowed opacity-50"
+                        />
+                        <input
+                          type="checkbox"
+                          checked={!!week.isCompleted}
+                          onChange={(e) => {
+                            if (week.id) {
+                              setApprovingMilestone(week.id);
+                              toggleMilestoneCompletion(week.id, e.target.checked).finally(() => {
+                                setApprovingMilestone(null);
+                                onRefresh?.();
+                              });
+                            }
+                          }}
+                          disabled={approvingMilestone === week.id}
+                          title="Mark as done"
+                          className="rounded border-border shrink-0 cursor-pointer disabled:opacity-50"
+                        />
+                      </div>
+                    ) : null}
+                    <div className="flex-1">
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">Milestone Description</p>
+                      {canEditMeta ? (
+                        <textarea
+                          rows={2}
+                          value={descVal}
+                          placeholder="Enter milestone description…"
+                          onChange={(e) => setEditField(week.weekNumber, "description", e.target.value)}
+                          onBlur={() => handleSaveMeta(week.weekNumber, descVal, pctVal)}
+                          className="w-full text-sm bg-background border border-border rounded-md px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary resize-none"
+                        />
+                      ) : (
+                        <p className={`text-sm ${week.isCompleted ? "line-through text-muted-foreground" : "text-foreground"}`}>
+                          {descVal || <span className="text-muted-foreground italic">No milestone set</span>}
+                        </p>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      Cumulative %
-                    </p>
-                    {canEditMeta ? (
-                      <input
-                        type="number"
-                        min={0}
-                        max={100}
-                        value={pctVal}
-                        onChange={(e) => setEditField(week.weekNumber, "percentage", e.target.value)}
-                        onBlur={() => handleSaveMeta(week.weekNumber, descVal, pctVal)}
-                        className="w-20 text-sm bg-background border border-border rounded-md px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary text-center"
-                      />
-                    ) : (
-                      <span className="text-sm font-medium">{week.cumulativePercentage}%</span>
-                    )}
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Milestones/Results</p>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground uppercase tracking-wider">Cumulative %</span>
+                      {canEditMeta ? (
+                        <input
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={pctVal}
+                          onChange={(e) => setEditField(week.weekNumber, "percentage", e.target.value)}
+                          onBlur={() => handleSaveMeta(week.weekNumber, descVal, pctVal)}
+                          className="w-16 text-sm bg-background border border-border rounded-md px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary text-center"
+                        />
+                      ) : (
+                        <span className="text-sm font-bold">{week.cumulativePercentage}%</span>
+                      )}
+                    </div>
                   </div>
+                  {week.results.length > 0 ? (
+                    <div className="space-y-1.5">
+                      {week.results.map((result, i) => (
+                        <label key={i} className="flex items-center gap-2 text-sm cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={result.done}
+                            onChange={() => handleToggle(week.id, week.weekNumber, "results", i, week.results)}
+                            className="rounded border-border"
+                          />
+                          <span className={result.done ? "line-through text-muted-foreground" : ""}>{result.text}</span>
+                        </label>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground italic">No results yet</p>
+                  )}
                 </div>
 
                 {/* Action Steps */}
@@ -402,12 +606,48 @@ export function WeeklyTracker({
                         return (
                         <div key={i} className={`space-y-1 rounded-lg p-1.5 -mx-1.5 ${noDays ? "bg-amber-500/5 border border-amber-400/20" : ""}`}>
                           <div className="flex items-start gap-2">
-                            <input
-                              type="checkbox"
-                              checked={action.done}
-                              onChange={() => handleToggle(week.id, week.weekNumber, "actions", i, week.actions)}
-                              className="rounded border-border mt-0.5 shrink-0"
-                            />
+                            {/* Coach: approve checkbox | Student: 2-column (coach approval + done) */}
+                            {canApprove ? (
+                              // Coach view: single approve checkbox
+                              <input
+                                type="checkbox"
+                                checked={!!action.approved}
+                                onChange={(e) => {
+                                  const actionKey = `${week.weekNumber}-${i}`;
+                                  setApprovingActionStep(actionKey);
+                                  const updated = week.actions.map((a, idx) =>
+                                    idx === i ? { ...a, approved: e.target.checked } : a
+                                  );
+                                  updateMilestone(activeGoalId, week.weekNumber, {
+                                    actions: JSON.stringify(updated),
+                                  }).finally(() => {
+                                    setApprovingActionStep(null);
+                                    onRefresh?.();
+                                  });
+                                }}
+                                disabled={approvingActionStep === `${week.weekNumber}-${i}`}
+                                title="Approve action step"
+                                className="rounded border-border mt-0.5 shrink-0 cursor-pointer disabled:opacity-50"
+                              />
+                            ) : studentId === user.userId ? (
+                              // Student view: 2 checkboxes
+                              <div className="flex gap-1.5 mt-0.5">
+                                <input
+                                  type="checkbox"
+                                  checked={!!action.approved}
+                                  disabled
+                                  title="Coach approval (read-only)"
+                                  className="rounded border-border shrink-0 cursor-not-allowed opacity-50"
+                                />
+                                <input
+                                  type="checkbox"
+                                  checked={action.done}
+                                  onChange={() => handleToggle(week.id, week.weekNumber, "actions", i, week.actions)}
+                                  title="Mark as done"
+                                  className="rounded border-border shrink-0 cursor-pointer"
+                                />
+                              </div>
+                            ) : null}
                             {canEditMeta && editingActionIdx[week.weekNumber] === i ? (
                               <input
                                 type="text"
@@ -418,8 +658,8 @@ export function WeeklyTracker({
                                   const updated = week.actions.map((a, idx) => idx === i ? { ...a, text: newText } : a);
                                   setEditingActionIdx(prev => ({ ...prev, [week.weekNumber]: null }));
                                   if (newText !== action.text) {
-                                    await updateMilestone(goalId, week.weekNumber, { actions: JSON.stringify(updated) });
-                                    setRefreshKey(k => k + 1);
+                                    await updateMilestone(activeGoalId, week.weekNumber, { actions: JSON.stringify(updated) });
+                                    onRefresh?.();
                                   }
                                 }}
                                 className="flex-1 text-sm bg-background border border-primary rounded px-2 py-0.5 focus:outline-none"
@@ -450,7 +690,7 @@ export function WeeklyTracker({
                                     setOptimisticDays(prev => ({ ...prev, [dayKey]: next }));
                                     const updated = week.actions.map((a, idx) => idx === i ? { ...a, days: next } : a);
                                     await updateMilestone(activeGoalId, week.weekNumber, { actions: JSON.stringify(updated) });
-                                    setRefreshKey(k => k + 1);
+                                    onRefresh?.();
                                   }}
                                   className={`w-7 h-7 text-[10px] font-bold rounded-lg border transition-all select-none ${
                                     active
@@ -473,7 +713,7 @@ export function WeeklyTracker({
                                     setOptimisticDays(prev => ({ ...prev, [dayKey]: next }));
                                     const updated = week.actions.map((a, idx) => idx === i ? { ...a, days: next } : a);
                                     await updateMilestone(activeGoalId, week.weekNumber, { actions: JSON.stringify(updated) });
-                                    setRefreshKey(k => k + 1);
+                                    onRefresh?.();
                                   }}
                                   className={`ml-1 text-[9px] px-1.5 py-0.5 rounded font-semibold transition-colors ${isWeekdays && !isDaily ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}
                                 >
@@ -486,7 +726,7 @@ export function WeeklyTracker({
                                     setOptimisticDays(prev => ({ ...prev, [dayKey]: next }));
                                     const updated = week.actions.map((a, idx) => idx === i ? { ...a, days: next } : a);
                                     await updateMilestone(activeGoalId, week.weekNumber, { actions: JSON.stringify(updated) });
-                                    setRefreshKey(k => k + 1);
+                                    onRefresh?.();
                                   }}
                                   className={`text-[9px] px-1.5 py-0.5 rounded font-semibold transition-colors ${isDaily ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}
                                 >
@@ -517,9 +757,8 @@ export function WeeklyTracker({
                     <button
                       onClick={async () => {
                         const updated = [...week.actions, { text: "New action step", done: false }];
-                        await updateMilestone(goalId, week.weekNumber, { actions: JSON.stringify(updated) });
-                        setRefreshKey(k => k + 1);
-                        setEditingActionIdx(prev => ({ ...prev, [week.weekNumber]: updated.length - 1 }));
+                        await updateMilestone(activeGoalId, week.weekNumber, { actions: JSON.stringify(updated) });
+                        onRefresh?.();
                       }}
                       className="mt-2 text-xs text-primary hover:text-primary/80 flex items-center gap-1"
                     >
@@ -528,27 +767,19 @@ export function WeeklyTracker({
                   )}
                 </div>
 
-                {/* Results */}
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Milestones/Results</p>
-                  {week.results.length > 0 ? (
-                    <div className="space-y-1.5">
-                      {week.results.map((result, i) => (
-                        <label key={i} className="flex items-center gap-2 text-sm cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={result.done}
-                            onChange={() => handleToggle(week.id, week.weekNumber, "results", i, week.results)}
-                            className="rounded border-border"
-                          />
-                          <span className={result.done ? "line-through text-muted-foreground" : ""}>{result.text}</span>
-                        </label>
-                      ))}
+                {/* Row 3 — action-milestone alignment pill */}
+                {week.description && week.actions.filter(a => a.text?.trim()).length > 0 && (() => {
+                  const actionsText = week.actions.map(a => a.text).join(" ");
+                  const score = keywordOverlap(actionsText, week.description);
+                  const lvl = alignmentLevel(score);
+                  return (
+                    <div className="flex items-center gap-1.5">
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${lvl.bg} ${lvl.color}`}>
+                        Actions-milestone alignment: {score}%
+                      </span>
                     </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground italic">No results yet</p>
-                  )}
-                </div>
+                  );
+                })()}
 
                 {/* Support Needed — HC + coach editable */}
                 {canEditMeta && (
@@ -561,8 +792,8 @@ export function WeeklyTracker({
                       onBlur={async (e) => {
                         const val = e.target.value;
                         if (val !== week.supportNeeded) {
-                          await updateMilestone(goalId, week.weekNumber, { supportNeeded: val });
-                          setRefreshKey(k => k + 1);
+                          await updateMilestone(activeGoalId, week.weekNumber, { supportNeeded: val });
+                          onRefresh?.();
                         }
                       }}
                       placeholder="Note any support or resources needed this week…"
@@ -576,8 +807,67 @@ export function WeeklyTracker({
                     <p className="text-sm">{week.supportNeeded}</p>
                   </div>
                 )}
-              </div>
-            )}
+
+                {/* Submit for Coach Review — student-owner only, milestone must exist */}
+                {studentId === user.userId && week.id && week.hasContent && (
+                  <div className="pt-3 border-t border-border">
+                    {week.approvalStatus === "pending" ? (
+                      <p className="text-xs text-amber-600 flex items-center gap-1.5">
+                        <Send className="h-3.5 w-3.5" />
+                        Submitted for coach review — awaiting response.
+                      </p>
+                    ) : submitForms[week.weekNumber] ? (
+                      <div className="space-y-2">
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Note to coach (optional)</p>
+                        <textarea
+                          value={submitNotes[week.weekNumber] ?? ""}
+                          onChange={(e) => setSubmitNotes(prev => ({ ...prev, [week.weekNumber]: e.target.value }))}
+                          rows={2}
+                          placeholder="Explain what you updated or why you're submitting…"
+                          className="w-full text-sm border border-border rounded-lg px-3 py-2 bg-background resize-none focus:outline-none focus:ring-1 focus:ring-primary"
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            disabled={submittingWeek === week.weekNumber}
+                            onClick={async () => {
+                              setSubmittingWeek(week.weekNumber);
+                              try {
+                                await submitMilestoneForReview(week.id!, submitNotes[week.weekNumber]?.trim() || undefined);
+                                setSubmitForms(prev => ({ ...prev, [week.weekNumber]: false }));
+                                setSubmitNotes(prev => ({ ...prev, [week.weekNumber]: "" }));
+                                setRefreshKey(k => k + 1);
+                                onRefresh?.();
+                              } catch (e) {
+                                console.error("Failed to submit milestone for review:", e);
+                              } finally {
+                                setSubmittingWeek(null);
+                              }
+                            }}
+                            className="flex items-center gap-1.5 text-sm px-4 py-1.5 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                          >
+                            <Send className="h-3.5 w-3.5" />
+                            {submittingWeek === week.weekNumber ? "Submitting…" : "Submit for Review"}
+                          </button>
+                          <button
+                            onClick={() => setSubmitForms(prev => ({ ...prev, [week.weekNumber]: false }))}
+                            className="text-sm px-4 py-1.5 rounded-lg bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setSubmitForms(prev => ({ ...prev, [week.weekNumber]: true }))}
+                        className="flex items-center gap-1.5 text-sm text-primary hover:text-primary/80 transition-colors"
+                      >
+                        <Send className="h-3.5 w-3.5" />
+                        Submit for Coach Review
+                      </button>
+                    )}
+                  </div>
+                )}
+            </div>}
           </div>
           );
         })}

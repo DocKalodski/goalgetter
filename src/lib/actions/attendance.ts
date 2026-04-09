@@ -35,7 +35,9 @@ export async function updateAttendance(
   const user = await getAuthUser();
   if (!user) throw new Error("Unauthorized");
 
-  if (user.role !== "coach" && user.role !== "head_coach") {
+  // Student can update their own attendance; coach can update any student's; HC read-only
+  const isOwnAttendance = user.userId === userId;
+  if (user.role !== "coach" && !isOwnAttendance) {
     throw new Error("Forbidden");
   }
 
@@ -71,7 +73,7 @@ export async function updateAttendance(
   if (existing.length > 0) {
     await db
       .update(attendance)
-      .set({ ...dbUpdates, updatedAt: now })
+      .set({ ...dbUpdates, lastEditedBy: user.userId, lastEditedRole: user.role, updatedAt: now })
       .where(eq(attendance.id, existing[0].id));
   } else {
     await db.insert(attendance).values({
@@ -79,6 +81,8 @@ export async function updateAttendance(
       userId,
       weekNumber,
       ...dbUpdates,
+      lastEditedBy: user.userId,
+      lastEditedRole: user.role,
       createdAt: now,
       updatedAt: now,
     });
@@ -107,6 +111,7 @@ export async function getBatchWeekInfo(): Promise<{
   batchStartDate: string;
   weeklyTargets: Record<string, { min: number; max: number }>;
   events: ProgramEvent[];
+  totalWeeks: number;
 }> {
   const [batch] = await db
     .select({
@@ -160,5 +165,6 @@ export async function getBatchWeekInfo(): Promise<{
     batchStartDate: batchStart,
     weeklyTargets,
     events,
+    totalWeeks: batch?.totalWeeks ?? 8,
   };
 }

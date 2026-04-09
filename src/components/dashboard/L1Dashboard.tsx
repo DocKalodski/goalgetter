@@ -1,14 +1,13 @@
 "use client";
 
 import { useNavigation } from "@/components/layout/DashboardShell";
-import { L1OverviewPage } from "./L1OverviewPage";
 import { L2OverviewPage } from "./L2OverviewPage";
 import { L1CoachesPage } from "./L1CoachesPage";
 import { L1StudentsPage } from "./L1StudentsPage";
 import { L1CouncilRankingsPage } from "./L1CouncilRankingsPage";
-import { DataSyncPage } from "./DataSyncPage";
 import { L1EavesdropPage } from "./L1EavesdropPage";
 import { L1SecurityPage } from "./L1SecurityPage";
+import { DataSyncPage } from "./DataSyncPage";
 
 export function L1Dashboard() {
   const { l1SubView, user } = useNavigation();

@@ -3,7 +3,7 @@ import { getAuthUser, isHeadCoach,
 } from "@/lib/auth/jwt";
 import { db } from "@/lib/db";
 import { loginAudits, activeSessions, users } from "@/lib/db/schema";
-import { eq, desc, gte, and, gt } from "drizzle-orm";
+import { eq, desc, gte, gt, inArray, sql } from "drizzle-orm";
 
 export async function GET() {
   const user = await getAuthUser();
@@ -59,6 +59,34 @@ export async function GET() {
     .where(gt(activeSessions.expiresAt, now))
     .orderBy(desc(activeSessions.lastSeenAt));
 
+  // Inactive accounts — users with no login in 7+ days (or never logged in)
+  const allActiveUsers = await db
+    .select({ id: users.id, name: users.name, email: users.email, role: users.role, createdAt: users.createdAt })
+    .from(users)
+    .where(inArray(users.role, ["coach", "student", "council_leader"]));
+
+  const lastLoginRows = await db
+    .select({
+      userId: loginAudits.userId,
+      lastLogin: sql<string>`MAX(${loginAudits.createdAt})`.as("lastLogin"),
+    })
+    .from(loginAudits)
+    .where(eq(loginAudits.status, "success"))
+    .groupBy(loginAudits.userId);
+
+  const lastLoginMap: Record<string, Date | null> = {};
+  for (const row of lastLoginRows) {
+    lastLoginMap[row.userId ?? ""] = row.lastLogin ? new Date(row.lastLogin) : null;
+  }
+  const inactiveAccounts = allActiveUsers
+    .map((u) => ({ ...u, lastLogin: lastLoginMap[u.id] ?? null }))
+    .filter((u) => !u.lastLogin || u.lastLogin < last7d)
+    .sort((a, b) => {
+      if (!a.lastLogin) return -1;
+      if (!b.lastLogin) return 1;
+      return a.lastLogin.getTime() - b.lastLogin.getTime();
+    });
+
   // Suspicious logins (all time for awareness)
   const suspiciousLogins = recentLogins.filter((l) => l.isSuspicious === 1);
 
@@ -80,9 +108,11 @@ export async function GET() {
       successToday,
       activeSessions: currentSessions.length,
       suspiciousCount: suspiciousLogins.length,
+      inactiveCount: inactiveAccounts.length,
     },
     recentLogins,
     currentSessions,
     suspiciousLogins,
+    inactiveAccounts,
   });
 }
