@@ -32,6 +32,52 @@ interface MilestoneData {
   isCompleted?: number | null;
 }
 
+interface ActionDistribution {
+  level: "Under-resourced" | "Well-distributed" | "Over-concentrated";
+  color: string;
+  icon: string;
+  actionCount: number;
+  daysCovered: string;
+}
+
+// Assess action step distribution for a milestone
+function assessActionDistribution(actions: CheckItem[]): ActionDistribution | null {
+  const nonEmpty = actions.filter(a => a.text?.trim());
+  if (nonEmpty.length === 0) return null;
+
+  const daySet = new Set<number>();
+  nonEmpty.forEach(a => {
+    if (a.days) {
+      a.days.forEach(d => daySet.add(d));
+    }
+  });
+
+  const daysCovered = daySet.size;
+  const actionCount = nonEmpty.length;
+  const dayLabels = ["M","T","W","Th","F","Sa","Su"];
+  const covered = Array.from(daySet).sort((a, b) => a - b).map(d => dayLabels[d]).join("-") || "no days";
+
+  let level: "Under-resourced" | "Well-distributed" | "Over-concentrated";
+  let color: string;
+  let icon: string;
+
+  if (daysCovered < 2) {
+    level = "Under-resourced";
+    color = "text-amber-600 dark:text-amber-400";
+    icon = "⚠";
+  } else if (actionCount > 10 || (actionCount > 5 && daysCovered < 4)) {
+    level = "Over-concentrated";
+    color = "text-red-600 dark:text-red-400";
+    icon = "⚡";
+  } else {
+    level = "Well-distributed";
+    color = "text-green-600 dark:text-green-400";
+    icon = "✓";
+  }
+
+  return { level, color, icon, actionCount, daysCovered: covered };
+}
+
 // Returns the target range label for a given week number
 function getWeekTarget(weekNumber: number, totalWeeks: number): string {
   if (totalWeeks === 8) {
@@ -185,6 +231,9 @@ export function WeeklyTracker({
     // Week fully done = all non-empty actions checked (used for cumulative fallback)
     const weekDone = actionTotal > 0 && actionDone === actionTotal;
 
+    // Compute action step distribution assessment
+    const distribution = assessActionDistribution(actions);
+
     return {
       weekNumber: week,
       id: milestone?.id || null,
@@ -196,6 +245,7 @@ export function WeeklyTracker({
       actionDone,
       actionTotal,
       weekDone,
+      distribution,
       supportNeeded: milestone?.supportNeeded || "",
       approvalStatus: milestone?.approvalStatus || "pending",
       reviewNote: milestone?.reviewNote || null,
@@ -360,64 +410,53 @@ export function WeeklyTracker({
                   <p className="text-xs text-muted-foreground leading-tight mt-0.5">
                     {dateRange}
                   </p>
-                  {week.description ? (
-                    <div className="flex items-start gap-2 mt-1.5">
-                      {/* Coach: approve checkbox | Student: 2-column (coach approval + done) */}
-                      {canApprove ? (
-                        // Coach view: single approve checkbox
-                        <input
-                          type="checkbox"
-                          checked={week.approvalStatus === "approved"}
-                          onChange={(e) => {
-                            if (week.id) {
-                              setApprovingMilestone(week.id);
-                              approveMilestone(week.id, e.target.checked ? "approved" : "rejected").finally(() => {
-                                setApprovingMilestone(null);
-                                onRefresh?.();
-                              });
-                            }
-                          }}
-                          disabled={approvingMilestone === week.id}
-                          title="Approve milestone"
-                          className="mt-0.5 rounded border-border shrink-0 cursor-pointer disabled:opacity-50"
-                        />
-                      ) : studentId === user.userId ? (
-                        // Student view: 2 checkboxes
-                        <div className="flex gap-1.5 mt-0.5">
-                          <input
-                            type="checkbox"
-                            checked={week.approvalStatus === "approved"}
-                            disabled
-                            title="Coach approval (read-only)"
-                            className="rounded border-border shrink-0 cursor-not-allowed opacity-50"
-                          />
-                          <input
-                            type="checkbox"
-                            checked={!!week.isCompleted}
-                            onChange={(e) => {
-                              if (week.id) {
-                                setApprovingMilestone(week.id);
-                                toggleMilestoneCompletion(week.id, e.target.checked).finally(() => {
-                                  setApprovingMilestone(null);
-                                  onRefresh?.();
-                                });
-                              }
-                            }}
-                            disabled={approvingMilestone === week.id}
-                            title="Mark as done"
-                            className="mt-0 rounded border-border shrink-0 cursor-pointer disabled:opacity-50"
-                          />
-                        </div>
-                      ) : null}
-                      <p className={`text-sm leading-snug line-clamp-2 flex-1 ${
-                        week.isCompleted ? "line-through text-muted-foreground" : "text-foreground/80"
-                      }`}>
-                        {week.description}
-                      </p>
+                  {/* Coach: approve checkbox | Student: 2-column (coach approval + done) */}
+                  {canApprove ? (
+                    // Coach view: single approve checkbox
+                    <input
+                      type="checkbox"
+                      checked={week.approvalStatus === "approved"}
+                      onChange={(e) => {
+                        if (week.id) {
+                          setApprovingMilestone(week.id);
+                          approveMilestone(week.id, e.target.checked ? "approved" : "rejected").finally(() => {
+                            setApprovingMilestone(null);
+                            onRefresh?.();
+                          });
+                        }
+                      }}
+                      disabled={approvingMilestone === week.id}
+                      title="Approve milestone"
+                      className="mt-1.5 rounded border-border shrink-0 cursor-pointer disabled:opacity-50"
+                    />
+                  ) : studentId === user.userId ? (
+                    // Student view: 2 checkboxes
+                    <div className="flex gap-1.5 mt-1.5">
+                      <input
+                        type="checkbox"
+                        checked={week.approvalStatus === "approved"}
+                        disabled
+                        title="Coach approval (read-only)"
+                        className="rounded border-border shrink-0 cursor-not-allowed opacity-50"
+                      />
+                      <input
+                        type="checkbox"
+                        checked={!!week.isCompleted}
+                        onChange={(e) => {
+                          if (week.id) {
+                            setApprovingMilestone(week.id);
+                            toggleMilestoneCompletion(week.id, e.target.checked).finally(() => {
+                              setApprovingMilestone(null);
+                              onRefresh?.();
+                            });
+                          }
+                        }}
+                        disabled={approvingMilestone === week.id}
+                        title="Mark as done"
+                        className="rounded border-border shrink-0 cursor-pointer disabled:opacity-50"
+                      />
                     </div>
-                  ) : (
-                    <p className="text-xs text-muted-foreground/50 italic mt-1">No milestone set</p>
-                  )}
+                  ) : null}
                 </div>
                 {isCurrent && (
                   <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary shrink-0">
@@ -552,6 +591,18 @@ export function WeeklyTracker({
                       )}
                     </div>
                   </div>
+
+                  {/* Action Step Distribution Assessment */}
+                  {week.distribution && (
+                    <div className={`text-xs font-semibold ${week.distribution.color} flex items-center gap-2 mt-2`}>
+                      <span>{week.distribution.icon} {week.distribution.level}</span>
+                      <span className="text-muted-foreground">·</span>
+                      <span>{week.distribution.actionCount} actions</span>
+                      <span className="text-muted-foreground">·</span>
+                      <span>{week.distribution.daysCovered}</span>
+                    </div>
+                  )}
+
                   <div className="flex items-center justify-between">
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Milestones/Results</p>
                     <div className="flex items-center gap-2">

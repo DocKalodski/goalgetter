@@ -237,47 +237,70 @@ const DEV_PASSCODES: Record<string, string> = {
 };
 
 export async function devLogin(passcode: string) {
-  const email = DEV_PASSCODES[passcode.toUpperCase()];
-  if (!email) return { success: false, error: "Invalid passcode" };
+  try {
+    const email = DEV_PASSCODES[passcode.toUpperCase()];
+    if (!email) throw new Error("Invalid passcode");
 
-  const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
-  if (!user) return { success: false, error: "Beta account not found" };
+    const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+    if (!user) throw new Error("Beta account not found");
 
-  const now = new Date();
-  const { ip, ua, deviceType, browser, os } = await getRequestMeta();
-  const sessionId = createId();
-  const sessionExpiry = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    const now = new Date();
+    const { ip, ua, deviceType, browser, os } = await getRequestMeta();
+    const sessionId = createId();
+    const sessionExpiry = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
-  await db.insert(activeSessions).values({
-    id: sessionId, userId: user.id, ipAddress: ip, userAgent: ua,
-    deviceType, browser, os, lastSeenAt: now, createdAt: now, expiresAt: sessionExpiry,
-  });
+    await db.insert(activeSessions).values({
+      id: sessionId, userId: user.id, ipAddress: ip, userAgent: ua,
+      deviceType, browser, os, lastSeenAt: now, createdAt: now, expiresAt: sessionExpiry,
+    });
 
-  await db.insert(loginAudits).values({
-    id: createId(), userId: user.id, email, ipAddress: ip, userAgent: ua,
-    deviceType, browser, os, status: "success", failReason: null,
-    sessionId, isSuspicious: 0, suspicionReason: null, createdAt: now,
-  });
+    await db.insert(loginAudits).values({
+      id: createId(), userId: user.id, email, ipAddress: ip, userAgent: ua,
+      deviceType, browser, os, status: "success", failReason: null,
+      sessionId, isSuspicious: 0, suspicionReason: null, createdAt: now,
+    });
 
-  const cookieStore = await cookies();
-  cookieStore.set("session_id", sessionId, {
-    httpOnly: true, secure: process.env.NODE_ENV === "production",
-    sameSite: "strict", path: "/", maxAge: 60 * 60 * 24 * 7,
-  });
+    const cookieStore = await cookies();
+    cookieStore.set("session_id", sessionId, {
+      httpOnly: true, secure: process.env.NODE_ENV === "production",
+      sameSite: "strict", path: "/", maxAge: 60 * 60 * 24 * 7,
+    });
 
-  const payload: JWTPayload = {
-    userId: user.id,
-    role: user.role as JWTPayload["role"],
-    canViewAllCouncils: user.canViewAllCouncils === 1,
-  };
-  const accessToken = await createAccessToken(payload);
-  const refreshToken = await createRefreshToken(payload);
-  await setAuthCookies(accessToken, refreshToken);
+    const payload: JWTPayload = {
+      userId: user.id,
+      role: user.role as JWTPayload["role"],
+      canViewAllCouncils: user.canViewAllCouncils === 1,
+    };
+    const accessToken = await createAccessToken(payload);
+    const refreshToken = await createRefreshToken(payload);
+    await setAuthCookies(accessToken, refreshToken);
 
-  const destination = user.canViewAllCouncils === 1
-    ? "/l1"
-    : config.roles.loginDestinations[user.role as keyof typeof config.roles.loginDestinations];
-  redirect(destination);
+    const destination = user.canViewAllCouncils === 1
+      ? "/l1"
+      : config.roles.loginDestinations[user.role as keyof typeof config.roles.loginDestinations];
+    redirect(destination);
+  } catch (error) {
+    // If it's a redirect, let it through; otherwise log
+    if (error instanceof Error && error.message.includes('NEXT_REDIRECT')) {
+      throw error;
+    }
+    console.error("[devLogin] Error:", error instanceof Error ? error.message : String(error));
+    throw error;
+  }
+}
+
+export async function devLoginAction(formData: FormData) {
+  const key = formData.get("key") as string;
+  try {
+    await devLogin(key);
+  } catch (error) {
+    // redirect() throws, so we need to re-throw it
+    if (error instanceof Error && error.message.includes('NEXT_REDIRECT')) {
+      throw error;
+    }
+    console.error("devLoginAction error:", error);
+    throw error;
+  }
 }
 
 export async function logout() {

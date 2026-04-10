@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { ThemeProvider } from "@/components/providers/ThemeProvider";
+import { APATransferInitializer } from "@/components/APATransferInitializer";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -23,6 +24,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body>
+        <APATransferInitializer />
         <ThemeProvider
           attribute="class"
           defaultTheme="system"

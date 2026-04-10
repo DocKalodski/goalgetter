@@ -1,37 +1,23 @@
-"use client";
+'use client';
 
 import { LoginForm } from "@/components/forms/LoginForm";
-import { useState } from "react";
-import { devLogin } from "@/lib/actions/auth";
-import { isRedirectError } from "next/dist/client/components/redirect";
-
-const QUICK_LOGIN = [
-  { name: "HC · Louie", key: "HC", color: "bg-purple-600 hover:bg-purple-700" },
-  { name: "Facilitator", key: "F", color: "bg-slate-700 hover:bg-slate-800" },
-  { name: "Coach · Kinder", key: "CK", color: "bg-blue-600 hover:bg-blue-700" },
-  { name: "Coach · MARY-G", key: "CMG", color: "bg-blue-600 hover:bg-blue-700" },
-  { name: "Coach · Magnificents", key: "CMAG", color: "bg-blue-600 hover:bg-blue-700" },
-  { name: "Student · Kinder", key: "SK", color: "bg-emerald-600 hover:bg-emerald-700" },
-  { name: "Student · MARY-G", key: "SMG", color: "bg-emerald-600 hover:bg-emerald-700" },
-  { name: "Student · Magnificents", key: "SMAG", color: "bg-emerald-600 hover:bg-emerald-700" },
-];
+import { devLoginAction } from "@/lib/actions/auth";
+import { useTransition } from "react";
 
 export default function LoginPage({
   searchParams,
 }: {
   searchParams: Promise<{ expired?: string }>;
 }) {
-  const [loading, setLoading] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
 
-  async function handleQuickLogin(key: string) {
-    setLoading(key);
-    try {
-      await devLogin(key);
-    } catch (e) {
-      if (isRedirectError(e)) throw e;
-      setLoading(null);
-    }
-  }
+  const handleHCLogin = () => {
+    startTransition(async () => {
+      const formData = new FormData();
+      formData.set("key", "HC");
+      await devLoginAction(formData);
+    });
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 via-background to-accent/10 p-4">
@@ -49,23 +35,15 @@ export default function LoginPage({
         <div className="bg-card rounded-xl shadow-lg border border-border p-6 space-y-4">
           <h2 className="text-lg font-semibold">Sign in to your account</h2>
 
-          {/* Quick Login Buttons */}
-          <div className="space-y-2">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">BETA · QUICK LOGIN</p>
-            <div className="grid grid-cols-2 gap-2 w-full">
-              {QUICK_LOGIN.map((btn) => (
-                <button
-                  key={btn.key}
-                  type="button"
-                  onClick={() => handleQuickLogin(btn.key)}
-                  disabled={!!loading}
-                  className={`w-full px-3 py-2.5 rounded-lg text-xs font-semibold text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed ${btn.color}`}
-                >
-                  {loading === btn.key ? "..." : btn.name}
-                </button>
-              ))}
-            </div>
-          </div>
+          {/* HC Quick Login */}
+          <button
+            type="button"
+            onClick={handleHCLogin}
+            disabled={isPending}
+            className="w-full px-4 py-3 rounded-lg text-sm font-semibold text-white bg-purple-600 hover:bg-purple-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isPending ? "Signing in..." : "HC · Louie"}
+          </button>
 
           {/* Divider */}
           <div className="relative">
