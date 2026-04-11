@@ -39,77 +39,76 @@ export default function Beta2Page() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center gap-8 p-6">
-      <div className="text-center space-y-1">
-        <h1 className="text-3xl font-black text-white">GoalGetter</h1>
-        <p className="text-sm text-gray-500">Dev Quick-Login · not visible to participants</p>
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black flex flex-col items-center justify-center gap-12 p-6">
+      <div className="text-center space-y-2">
+        <h1 className="text-4xl font-black text-white">GoalGetter</h1>
+        <p className="text-sm text-gray-400">Dev Quick-Login · not visible to participants</p>
       </div>
 
-      {/* Role views */}
-      <div className="w-full max-w-sm space-y-3">
-        <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Role Views</p>
-        {ROLE_VIEWS.map((v) => (
-          <button
-            key={v.key}
-            type="button"
-            disabled={!!loading}
-            onClick={() => handleLogin(v.key)}
-            className={`w-full flex items-center justify-between px-5 py-3.5 rounded-xl text-white font-bold transition-all disabled:opacity-50 ${v.color}`}
-          >
-            <div className="text-left">
-              <p className="text-base leading-tight">{loading === v.key ? "Logging in…" : v.label}</p>
-              <p className="text-xs font-normal opacity-60">{v.desc}</p>
-            </div>
-            <span className="text-xs font-black opacity-40 ml-4">{v.key}</span>
-          </button>
-        ))}
-      </div>
+      <div className="w-full max-w-2xl space-y-12">
+        {/* Role views */}
+        <div className="space-y-4">
+          <p className="text-xs font-bold text-gray-400 uppercase tracking-widest px-2">Role Views</p>
+          <div className="grid grid-cols-1 gap-3">
+            {ROLE_VIEWS.map((v) => (
+              <button
+                key={v.key}
+                type="button"
+                disabled={!!loading}
+                onClick={() => handleLogin(v.key)}
+                className={`w-full flex flex-col items-start justify-center px-6 py-4 rounded-lg text-white font-bold transition-all disabled:opacity-50 ${v.color}`}
+              >
+                <p className="text-lg">{loading === v.key ? "Logging in…" : v.label}</p>
+                <p className="text-xs font-normal opacity-70">{v.desc}</p>
+              </button>
+            ))}
+          </div>
+        </div>
 
-      {/* Coaches */}
-      <div className="w-full max-w-sm space-y-3">
-        <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Coaches</p>
-        {COACHES.map((v) => (
-          <button
-            key={v.key}
-            type="button"
-            disabled={!!loading}
-            onClick={() => handleLogin(v.key)}
-            className={`w-full flex items-center justify-between px-5 py-3 rounded-xl text-white font-semibold transition-all disabled:opacity-50 ${v.color}`}
-          >
-            <div className="text-left">
-              <p className="text-sm leading-tight">{loading === v.key ? "Logging in…" : v.label}</p>
-              <p className="text-xs font-normal opacity-50">{v.council}</p>
-            </div>
-            <span className="text-xs font-black opacity-40 ml-4">{v.key}</span>
-          </button>
-        ))}
-      </div>
+        {/* Coaches */}
+        <div className="space-y-4">
+          <p className="text-xs font-bold text-gray-400 uppercase tracking-widest px-2">Coaches</p>
+          <div className="grid grid-cols-3 gap-3">
+            {COACHES.map((v) => (
+              <button
+                key={v.key}
+                type="button"
+                disabled={!!loading}
+                onClick={() => handleLogin(v.key)}
+                className={`flex flex-col items-center justify-center px-4 py-4 rounded-lg text-white font-semibold transition-all disabled:opacity-50 ${v.color}`}
+              >
+                <p className="text-sm">{loading === v.key ? "…" : v.label}</p>
+                <p className="text-xs font-normal opacity-70 mt-1">{v.council}</p>
+              </button>
+            ))}
+          </div>
+        </div>
 
-      {/* Students */}
-      <div className="w-full max-w-sm space-y-3">
-        <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Students</p>
-        {STUDENTS.map((v) => (
-          <button
-            key={v.key}
-            type="button"
-            disabled={!!loading}
-            onClick={() => handleLogin(v.key)}
-            className={`w-full flex items-center justify-between px-5 py-3 rounded-xl text-white font-semibold transition-all disabled:opacity-50 ${v.color}`}
-          >
-            <div className="text-left">
-              <p className="text-sm leading-tight">{loading === v.key ? "Logging in…" : v.label}</p>
-              <p className="text-xs font-normal opacity-50">{v.council}</p>
-            </div>
-            <span className="text-xs font-black opacity-40 ml-4">{v.key}</span>
-          </button>
-        ))}
-      </div>
+        {/* Students */}
+        <div className="space-y-4">
+          <p className="text-xs font-bold text-gray-400 uppercase tracking-widest px-2">Students</p>
+          <div className="grid grid-cols-3 gap-3">
+            {STUDENTS.map((v) => (
+              <button
+                key={v.key}
+                type="button"
+                disabled={!!loading}
+                onClick={() => handleLogin(v.key)}
+                className={`flex flex-col items-center justify-center px-4 py-4 rounded-lg text-white font-semibold transition-all disabled:opacity-50 ${v.color}`}
+              >
+                <p className="text-sm">{loading === v.key ? "…" : v.label}</p>
+                <p className="text-xs font-normal opacity-70 mt-1">{v.council}</p>
+              </button>
+            ))}
+          </div>
+        </div>
 
-      {error && (
-        <p className="text-sm text-red-400 bg-red-900/30 border border-red-700/50 rounded-lg px-4 py-2">
-          {error}
-        </p>
-      )}
+        {error && (
+          <div className="text-sm text-red-300 bg-red-950/50 border border-red-800 rounded-lg px-4 py-3">
+            {error}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
