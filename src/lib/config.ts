@@ -1,7 +1,7 @@
 export const config = {
   app: {
     name: "GoalGetter",
-    version: "1.9",
+    version: "3.0",
     author: "by Doc Kalodski",
     description: "LEAP 99 Goal Management Platform",
   },
