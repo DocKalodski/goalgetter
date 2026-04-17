@@ -1,11 +1,5 @@
-import { getAuthUser } from "@/lib/auth/jwt";
-import { redirect } from "next/navigation";
 import { DashboardRouter } from "@/components/dashboard/DashboardRouter";
 
-export default async function L1Page() {
-  const user = await getAuthUser();
-  if (!user || (user.role !== "head_coach" && user.role !== "facilitator")) {
-    redirect("/l2");
-  }
+export default function L1Page() {
   return <DashboardRouter />;
 }

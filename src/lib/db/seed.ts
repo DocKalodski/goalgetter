@@ -412,31 +412,58 @@ export async function seedDatabase() {
     console.log("No excel-action-plans-v3.json found, using fallback data");
   }
 
-  // Create batch
-  const batchId = createId();
-  await db.insert(batches).values({
-    id: batchId,
-    name: "LEAP 99",
-    startDate: "2026-02-02",
-    endDate: "2026-04-26",
-    createdAt: now,
-    updatedAt: now,
-  });
+  // Check if batch already exists
+  const existingBatch = await db
+    .select()
+    .from(batches)
+    .where(eq(batches.name, "LEAP 99"))
+    .limit(1);
 
-  // Create Head Coach
-  const hcId = createId();
+  let batchId: string;
+  if (existingBatch.length > 0) {
+    console.log("LEAP 99 batch already exists, using existing batch");
+    batchId = existingBatch[0].id;
+  } else {
+    // Create batch
+    batchId = createId();
+    await db.insert(batches).values({
+      id: batchId,
+      name: "LEAP 99",
+      startDate: "2026-02-02",
+      endDate: "2026-04-26",
+      createdAt: now,
+      updatedAt: now,
+    });
+    console.log("Created new LEAP 99 batch");
+  }
+
+  // Create Head Coach (or get existing)
   const defaultPwd = await hashPassword("password123");
-  await db.insert(users).values({
-    id: hcId,
-    email: "louie@leap99.com",
-    passwordHash: defaultPwd,
-    name: "Louie",
-    role: "head_coach",
-    batchId,
-    approvalStatus: "approved",
-    createdAt: now,
-    updatedAt: now,
-  });
+  const existingHC = await db
+    .select()
+    .from(users)
+    .where(eq(users.email, "louie@leap99.com"))
+    .limit(1);
+
+  let hcId: string;
+  if (existingHC.length > 0) {
+    console.log("Head Coach Louie already exists");
+    hcId = existingHC[0].id;
+  } else {
+    hcId = createId();
+    await db.insert(users).values({
+      id: hcId,
+      email: "louie@leap99.com",
+      passwordHash: defaultPwd,
+      name: "Louie",
+      role: "head_coach",
+      batchId,
+      approvalStatus: "approved",
+      createdAt: now,
+      updatedAt: now,
+    });
+    console.log("Created Head Coach Louie");
+  }
 
   // HC Louie declaration
   await db.insert(declarations).values({
@@ -529,31 +556,44 @@ export async function seedDatabase() {
     }
   }
 
-  // Create Coach (Kalod)
-  const coachId = createId();
-  await db.insert(users).values({
-    id: coachId,
-    email: "kalod.coach@leap99.com",
-    passwordHash: defaultPwd,
-    name: "Kalod Sta. Clara",
-    role: "coach",
-    batchId,
-    approvalStatus: "approved",
-    approvedBy: hcId,
-    createdAt: now,
-    updatedAt: now,
-  });
+  // Create Coach (Kalod) or get existing
+  const existingCoach = await db
+    .select()
+    .from(users)
+    .where(eq(users.email, "kalod.coach@leap99.com"))
+    .limit(1);
 
-  // Coach Kalod declaration (from Excel v3.1)
-  await db.insert(declarations).values({
-    id: createId(),
-    userId: coachId,
-    text: coachGoalData.Kalod.declaration,
-    approvalStatus: "approved",
-    approvedBy: hcId,
-    createdAt: now,
-    updatedAt: now,
-  });
+  let coachId: string;
+  if (existingCoach.length > 0) {
+    console.log("Coach Kalod already exists");
+    coachId = existingCoach[0].id;
+  } else {
+    coachId = createId();
+    await db.insert(users).values({
+      id: coachId,
+      email: "kalod.coach@leap99.com",
+      passwordHash: defaultPwd,
+      name: "Kalod Sta. Clara",
+      role: "coach",
+      batchId,
+      approvalStatus: "approved",
+      approvedBy: hcId,
+      createdAt: now,
+      updatedAt: now,
+    });
+    console.log("Created Coach Kalod");
+
+    // Coach Kalod declaration (from Excel v3.1)
+    await db.insert(declarations).values({
+      id: createId(),
+      userId: coachId,
+      text: coachGoalData.Kalod.declaration,
+      approvalStatus: "approved",
+      approvedBy: hcId,
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
 
   // Coach Kalod goals (from Excel v3.1)
   const kalodGoalData = coachGoalData.Kalod;

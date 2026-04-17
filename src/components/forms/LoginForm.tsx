@@ -1,56 +1,118 @@
 "use client";
 
 import { useState } from "react";
-import { useActionState } from "react";
-import { login } from "@/lib/actions/auth";
+import { devLogin } from "@/lib/actions/auth";
+
+const ROLES_BASIC = [
+  { key: "HC" as const, label: "Head Coach", color: "bg-blue-600 hover:bg-blue-700" },
+  { key: "C" as const, label: "Coach", color: "bg-green-600 hover:bg-green-700" },
+  { key: "S" as const, label: "Student", color: "bg-purple-600 hover:bg-purple-700" },
+];
 
 export function LoginForm() {
-  const [state, formAction, isPending] = useActionState(
-    async (_prevState: { success: boolean; error?: string } | null, formData: FormData) => {
-      return await login(formData);
-    },
-    null
-  );
+  const [isPending, setIsPending] = useState(false);
+  const isDemo = process.env.NEXT_PUBLIC_DEMO_11_BUTTONS === "true";
 
-  return (
-    <form action={formAction} className="space-y-4">
-      {state?.error && (
-        <div className="bg-destructive/10 text-destructive text-sm p-3 rounded-lg border border-destructive/20">
-          {state.error}
+  const handleLogin = async (passcode: string) => {
+    setIsPending(true);
+    try {
+      await devLogin(passcode);
+    } catch (error) {
+      // Re-throw redirect errors so navigation actually happens
+      if (error instanceof Error && error.message.includes("NEXT_REDIRECT")) {
+        throw error;
+      }
+      console.error("Login error:", error);
+      setIsPending(false);
+    }
+  };
+
+  // 11-Button Demo Version
+  if (isDemo) {
+    return (
+      <div className="space-y-6">
+        <button
+          type="button"
+          onClick={() => handleLogin("HC")}
+          disabled={isPending}
+          className="w-full py-3 px-4 rounded-lg font-semibold text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed bg-indigo-600 hover:bg-indigo-700"
+        >
+          {isPending ? "Signing in..." : "HC view"}
+        </button>
+
+        <div className="space-y-2">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Coach Iya (Kinder)</p>
+          <button
+            type="button"
+            onClick={() => handleLogin("COACH_IYA")}
+            disabled={isPending}
+            className="w-full py-2.5 px-4 rounded-lg font-semibold text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed bg-blue-600 hover:bg-blue-700 text-sm"
+          >
+            {isPending ? "Signing in..." : "Demo Coach Iya view"}
+          </button>
+          <div className="grid grid-cols-2 gap-2">
+            {["STUDENT_1A", "STUDENT_1B", "STUDENT_1C", "STUDENT_1D"].map((key) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => handleLogin(key)}
+                disabled={isPending}
+                className="py-2 px-3 rounded-lg font-semibold text-white text-xs transition-colors disabled:opacity-50 disabled:cursor-not-allowed bg-cyan-500 hover:bg-cyan-600"
+              >
+                {key.replace("STUDENT_", "Student ")}
+              </button>
+            ))}
+          </div>
         </div>
-      )}
 
-      <div className="space-y-2">
-        <label htmlFor="email" className="text-sm font-medium leading-none">Email</label>
-        <input
-          id="email"
-          name="email"
-          type="email"
-          required
-          placeholder="you@example.com"
-          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-        />
+        <div className="space-y-2">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Coach RJ (Mary-g)</p>
+          <button
+            type="button"
+            onClick={() => handleLogin("COACH_RJ")}
+            disabled={isPending}
+            className="w-full py-2.5 px-4 rounded-lg font-semibold text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed bg-green-600 hover:bg-green-700 text-sm"
+          >
+            {isPending ? "Signing in..." : "Demo Coach RJ view"}
+          </button>
+          <div className="grid grid-cols-2 gap-2">
+            {["STUDENT_2A", "STUDENT_2B", "STUDENT_2C", "STUDENT_2D"].map((key) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => handleLogin(key)}
+                disabled={isPending}
+                className="py-2 px-3 rounded-lg font-semibold text-white text-xs transition-colors disabled:opacity-50 disabled:cursor-not-allowed bg-emerald-500 hover:bg-emerald-600"
+              >
+                {key.replace("STUDENT_", "Student ")}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <p className="text-xs text-muted-foreground text-center pt-4">Demo mode — all goals from APA</p>
+      </div>
+    );
+  }
+
+  // 3-Button Basic Version
+  return (
+    <div className="space-y-4">
+      <div className="space-y-3">
+        {ROLES_BASIC.map((role) => (
+          <button
+            key={role.key}
+            type="button"
+            onClick={() => handleLogin(role.key)}
+            disabled={isPending}
+            className={`w-full py-3 px-4 rounded-lg font-semibold text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${role.color}`}
+          >
+            {isPending ? "Signing in..." : `Login as ${role.label}`}
+          </button>
+        ))}
       </div>
 
-      <div className="space-y-2">
-        <label htmlFor="password" className="text-sm font-medium leading-none">Password</label>
-        <input
-          id="password"
-          name="password"
-          type="password"
-          required
-          placeholder="Enter your password"
-          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-        />
-      </div>
-
-      <button
-        type="submit"
-        disabled={isPending}
-        className="inline-flex items-center justify-center w-full h-10 px-4 py-2 text-sm font-medium text-primary-foreground bg-primary rounded-md hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 transition-colors"
-      >
-        {isPending ? "Signing in..." : "Sign In"}
-      </button>
-    </form>
+      <p className="text-xs text-muted-foreground text-center pt-2">Demo mode — no password required</p>
+    </div>
   );
 }

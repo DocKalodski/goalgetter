@@ -73,12 +73,63 @@ export function L3StudentDetail() {
           getBatchWeekInfo(),
           getStudentWeeklyHistory(targetId),
         ]);
-        setStudent(data);
-        setWeeklyHistory(history);
-        setUnreadChatCount(data?.unreadDmCount ?? 0);
+        if (data) {
+          setStudent(data);
+          setWeeklyHistory(history);
+          setUnreadChatCount(data?.unreadDmCount ?? 0);
+        } else if (targetId.startsWith("demo-")) {
+          // Demo mode: create mock student
+          setStudent({
+            id: targetId,
+            name: "Demo Student",
+            email: "student@demo.local",
+            pendingName: null,
+            declaration: null,
+            pendingDeclarationId: null,
+            pendingDeclarationText: null,
+            buddyName: null,
+            councilName: "Demo Council",
+            coachName: "Demo Coach",
+            enrollmentProgress: 65,
+            personalProgress: 48,
+            professionalProgress: 72,
+            enrollmentResults: 2,
+            personalResults: 1,
+            professionalResults: 3,
+            enrollmentCurrentWeek: 1,
+            personalCurrentWeek: 0,
+            professionalCurrentWeek: 2,
+            unreadDmCount: 0,
+          });
+        }
         setWeekInfo({ currentWeek: info.currentWeek, reportingWeek: info.reportingWeek, batchStartDate: info.batchStartDate, weeklyTargets: info.weeklyTargets });
       } catch (error) {
         console.error("Failed to load student:", error);
+        // Demo fallback on error
+        if (targetId.startsWith("demo-")) {
+          setStudent({
+            id: targetId,
+            name: "Demo Student",
+            email: "student@demo.local",
+            pendingName: null,
+            declaration: null,
+            pendingDeclarationId: null,
+            pendingDeclarationText: null,
+            buddyName: null,
+            councilName: "Demo Council",
+            coachName: "Demo Coach",
+            enrollmentProgress: 65,
+            personalProgress: 48,
+            professionalProgress: 72,
+            enrollmentResults: 2,
+            personalResults: 1,
+            professionalResults: 3,
+            enrollmentCurrentWeek: 1,
+            personalCurrentWeek: 0,
+            professionalCurrentWeek: 2,
+            unreadDmCount: 0,
+          });
+        }
       } finally {
         setLoading(false);
       }

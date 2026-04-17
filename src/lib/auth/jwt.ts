@@ -67,7 +67,17 @@ export async function setAuthCookies(
 export async function getAuthUser(): Promise<JWTPayload | null> {
   const cookieStore = await cookies();
   const token = cookieStore.get("access_token")?.value;
-  if (!token) return null;
+  if (!token) {
+    // Dev mode: return mock head coach to bypass login
+    if (process.env.NODE_ENV === "development") {
+      return {
+        userId: "coach-demo",
+        role: "head_coach",
+        canViewAllCouncils: true,
+      };
+    }
+    return null;
+  }
   return verifyToken(token);
 }
 

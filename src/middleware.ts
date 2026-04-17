@@ -4,7 +4,7 @@ import { jwtVerify } from "jose";
 
 const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET!);
 
-const publicPaths = ["/login", "/api/auth/login", "/beta-expired", "/beta2"];
+const publicPaths = ["/", "/login", "/api/auth/login", "/beta-expired", "/beta2", "/l1", "/l2", "/l3", "/api"];
 
 // LEAP 99 kill pill — access expires 2 days after program end (Jun 25 2026)
 const ACCESS_EXPIRY = new Date("2026-06-27T00:00:00.000Z");
