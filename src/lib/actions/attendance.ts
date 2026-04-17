@@ -35,9 +35,8 @@ export async function updateAttendance(
   const user = await getAuthUser();
   if (!user) throw new Error("Unauthorized");
 
-  // Student can update their own attendance; coach can update any student's; HC read-only
-  const isOwnAttendance = user.userId === userId;
-  if (user.role !== "coach" && !isOwnAttendance) {
+  // Only coaches and head_coach can update attendance; students cannot
+  if (user.role !== "coach" && user.role !== "head_coach") {
     throw new Error("Forbidden");
   }
 

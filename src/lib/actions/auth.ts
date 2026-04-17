@@ -20,9 +20,12 @@ import { parseUserAgent } from "@/lib/auth/device";
 import { cookies } from "next/headers";
 
 const loginSchema = z.object({
-  email: z.string().email("Invalid email address"),
+  email: z.string().min(1, "Email is required").email("Invalid email address"),
   password: z.string().min(1, "Password is required"),
-});
+}).refine(
+  (data) => data.email && data.password,
+  { message: "Email and password are required" }
+);
 
 const registerSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -52,7 +55,10 @@ export async function login(formData: FormData) {
 
   const validated = loginSchema.safeParse(rawData);
   if (!validated.success) {
-    return { success: false, error: validated.error.errors[0].message };
+    // Get more descriptive error for missing password
+    const passwordError = validated.error.errors.find(e => e.path.includes('password'));
+    const message = passwordError?.message || validated.error.errors[0]?.message || 'Validation failed';
+    return { success: false, error: message };
   }
 
   const { email, password } = validated.data;
