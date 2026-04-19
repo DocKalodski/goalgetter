@@ -79,6 +79,12 @@ export function isHeadCoach(user: JWTPayload | null): boolean {
   return user.role === "head_coach" || user.role === "admin" || user.role === "developer" || user.canViewAllCouncils === true;
 }
 
+/** Returns true for coach, head_coach, admin, or developer. */
+export function isCoach(user: JWTPayload | null): boolean {
+  if (!user) return false;
+  return user.role === "coach" || user.role === "head_coach" || user.role === "admin" || user.role === "developer";
+}
+
 export async function clearAuthCookies() {
   const cookieStore = await cookies();
   cookieStore.delete("access_token");
