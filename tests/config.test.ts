@@ -18,8 +18,9 @@ describe("Configuration", () => {
   });
 
   it("should have correct role hierarchy", () => {
-    expect(config.roles.hierarchy).toHaveLength(6);
+    expect(config.roles.hierarchy).toHaveLength(7);
     expect(config.roles.hierarchy[0]).toBe("head_coach");
+    expect(config.roles.hierarchy).toContain("admin");
     expect(config.roles.hierarchy).toContain("developer");
     expect(config.roles.hierarchy).toContain("coach");
     expect(config.roles.hierarchy).toContain("facilitator");

@@ -5,6 +5,19 @@ import * as schema from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { createId } from "@paralleldrive/cuid2";
 
+const APA_ORIGIN = process.env.APA_ORIGIN || "http://localhost:3002";
+function corsHeaders() {
+  return {
+    "Access-Control-Allow-Origin": APA_ORIGIN,
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Credentials": "true",
+  };
+}
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: corsHeaders() });
+}
+
 interface ApaMilestone {
   weekNumber: number;
   weekDates?: string;
@@ -40,8 +53,8 @@ interface ApaData {
 export async function POST(request: NextRequest) {
   try {
     const user = await getAuthUser();
-    if (!user || (user.role !== "head_coach" && user.role !== "coach")) {
-      return NextResponse.json({ error: "Unauthorized. Coaches only." }, { status: 403 });
+    if (!user || (user.role !== "head_coach" && user.role !== "coach" && user.role !== "developer")) {
+      return NextResponse.json({ error: "Unauthorized. Coaches only." }, { status: 403, headers: corsHeaders() });
     }
 
     const body = await request.json() as { studentId: string; apaData: ApaData };
@@ -157,12 +170,12 @@ export async function POST(request: NextRequest) {
       message: `Imported ${goalsInserted} goals and ${milestonesInserted} milestones for ${student.name || student.email}.`,
       goalsInserted,
       milestonesInserted,
-    });
+    }, { headers: corsHeaders() });
   } catch (error) {
     console.error("[import/apa] error:", error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Internal server error" },
-      { status: 500 }
+      { status: 500, headers: corsHeaders() }
     );
   }
 }

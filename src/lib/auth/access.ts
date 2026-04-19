@@ -13,7 +13,7 @@ export async function canAccessStudent(
   user: JWTPayload,
   targetStudentId: string
 ): Promise<boolean> {
-  if (user.role === "head_coach" || user.canViewAllCouncils) return true;
+  if (user.role === "head_coach" || user.role === "admin" || user.canViewAllCouncils) return true;
 
   if (user.role === "student" || user.role === "council_leader") {
     return user.userId === targetStudentId;

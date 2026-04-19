@@ -4,9 +4,9 @@ import { APATransferInitializer } from "@/components/APATransferInitializer";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "GoalGetter - LEAP Goal Tracking",
+  title: "GoalGetter - LEAP 99 Goal Tracking v3.25",
   description:
-    "Track your S.M.A.R.T.e.r. goals in the Leadership Excellence Achievement Program",
+    "Track your S.M.A.R.T.e.r. goals in LEAP 99 · by Doc Kalodski",
   manifest: "/manifest.json",
 };
 

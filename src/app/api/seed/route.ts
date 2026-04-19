@@ -27,9 +27,10 @@ export async function POST() {
     );
   }
 
-  // Require head_coach auth (seed is no longer in publicPaths)
+  // In dev: allow unauthenticated seed (one-time setup)
+  // After seeding, user logs in as louie@leap99.com / louie-99
   const user = await getAuthUser();
-  if (!user || !isHeadCoach(user)) {
+  if (user && !isHeadCoach(user)) {
     return NextResponse.json(
       { error: "Forbidden: head_coach role required" },
       { status: 403 }

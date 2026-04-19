@@ -107,8 +107,8 @@ export function L1OverviewPage() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h2 className="text-2xl font-bold">Batch Overview</h2>
-        <p className="text-muted-foreground">LEAP 99 · Unstoppable Love</p>
+        <h2 className="text-2xl font-bold">GoalGetter - LEAP 99 v3.25</h2>
+        <p className="text-muted-foreground">by Doc Kalodski</p>
       </div>
 
       {/* 3 Compact Metric Cards */}

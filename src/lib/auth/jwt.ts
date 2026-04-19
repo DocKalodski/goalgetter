@@ -7,7 +7,7 @@ const REFRESH_TOKEN_EXPIRY = "7d";
 
 export interface JWTPayload {
   userId: string;
-  role: "head_coach" | "coach" | "council_leader" | "student" | "facilitator" | "developer";
+  role: "head_coach" | "admin" | "coach" | "council_leader" | "student" | "facilitator" | "developer";
   canViewAllCouncils?: boolean;
   permissions?: string[];
 }
@@ -68,23 +68,15 @@ export async function getAuthUser(): Promise<JWTPayload | null> {
   const cookieStore = await cookies();
   const token = cookieStore.get("access_token")?.value;
   if (!token) {
-    // Dev mode: return mock head coach to bypass login
-    if (process.env.NODE_ENV === "development") {
-      return {
-        userId: "coach-demo",
-        role: "head_coach",
-        canViewAllCouncils: true,
-      };
-    }
     return null;
   }
   return verifyToken(token);
 }
 
-/** Returns true for head_coach, developer, or any user with canViewAllCouncils. */
+/** Returns true for head_coach, admin, developer, or any user with canViewAllCouncils. */
 export function isHeadCoach(user: JWTPayload | null): boolean {
   if (!user) return false;
-  return user.role === "head_coach" || user.role === "developer" || user.canViewAllCouncils === true;
+  return user.role === "head_coach" || user.role === "admin" || user.role === "developer" || user.canViewAllCouncils === true;
 }
 
 export async function clearAuthCookies() {

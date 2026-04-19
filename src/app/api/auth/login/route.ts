@@ -9,13 +9,18 @@ import { config } from "@/lib/config";
 
 export async function POST(request: Request) {
   try {
-    const { email, password } = await request.json();
+    let { email, password } = await request.json();
 
     if (!email || !password) {
       return NextResponse.json(
         { error: "Email and password are required" },
         { status: 400 }
       );
+    }
+
+    // If email has no @, append @leap99.com
+    if (!email.includes("@")) {
+      email = `${email}@leap99.com`;
     }
 
     const [user] = await db

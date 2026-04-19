@@ -19,6 +19,8 @@ export async function getCouncilsWithStats() {
     ? await db.select().from(councils)
     : await db.select().from(councils).where(eq(councils.coachId, user.userId));
 
+  console.log(`[DEBUG getCouncilsWithStats] User: ${user.name} (${user.role}), Councils found: ${allCouncils.length}`);
+
   // Get head coach name for display
   const [headCoach] = await db
     .select({ name: users.name })
