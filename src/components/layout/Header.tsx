@@ -32,6 +32,7 @@ export function Header({ user }: HeaderProps) {
 
   const roleLabels: Record<string, string> = {
     head_coach: "Head Coach View",
+    admin: "Head Coach View",
     coach: "Coach View",
     council_leader: "Council Leader View",
     student: "Student View",
@@ -52,7 +53,7 @@ export function Header({ user }: HeaderProps) {
     <header className="h-16 border-b border-border bg-card px-4 flex items-center justify-between shrink-0">
       <div className="flex items-center gap-3">
         <div className="flex flex-col leading-tight">
-          <span className="text-base font-bold text-foreground">GoalGetter for LEAP 99</span>
+          <span className="text-base font-bold text-foreground">GoalGetter-LEAP 99 v3.25</span>
           <span className="text-xs text-muted-foreground hidden sm:inline">by Doc Kalodski · {roleLabels[user.role] || user.role}</span>
         </div>
       </div>

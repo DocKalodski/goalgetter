@@ -13,12 +13,9 @@ export default function LoginPage({
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-            GoalGetter
+            GoalGetter-LEAP 99 v3.25
           </h1>
-          <p className="text-muted-foreground mt-2">
-            LEAP 99 Goal Tracking Platform
-          </p>
-          <p className="text-xs text-muted-foreground/60 mt-1">by Doc Kalodski</p>
+          <p className="text-xs text-muted-foreground/60 mt-2">by Doc Kalodski</p>
         </div>
 
         <div className="bg-card rounded-xl shadow-lg border border-border p-6 space-y-4">

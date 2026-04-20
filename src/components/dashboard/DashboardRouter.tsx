@@ -11,7 +11,7 @@ import { EssenceQualitiesPage } from "./EssenceQualitiesPage";
 export function DashboardRouter() {
   const { currentPage, user, selectedStudentId, setCurrentPage } = useNavigation();
 
-  const isPrivileged = user.role === "head_coach" || user.role === "coach";
+  const isPrivileged = user.role === "head_coach" || user.role === "coach" || user.role === "admin";
   const isFacilitator = user.role === "facilitator";
 
   // L3 with no student selected → go back to L2

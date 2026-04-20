@@ -30,18 +30,12 @@ const COACHES = [
   { firstName: "Cherry", fullName: "Cherry Enriquez" },
 ];
 
-const FACIS = [
-  "Benjie Leogardo",
-  "Chona Santos",
-  "Ceville Rebollo",
-  "Faith de Chavez",
-  "Jaja Reynoso Alcantara",
-  "James Franco",
-  "Jen Gan",
-  "Kurt Silvano",
-  "Mic Pineda",
-  "Mimi Manalo",
-];
+// Shared facilitator account for all 10 facilitators
+const SHARED_FACILITATOR = {
+  email: "faci@leap99.com",
+  password: "faci-99",
+  name: "Facilitator (Shared)"
+};
 
 // Event keys per week for attendance
 const WEEK_EVENTS: Record<number, string[]> = {
@@ -86,7 +80,7 @@ export async function seedDatabase() {
   console.log("✓ Created LEAP 99 batch");
 
   // 2. Create Head Coach (Louie Sibayan)
-  const hcPwd = await hashPassword("louie-5899");
+  const hcPwd = await hashPassword("louie-99");
   const hcId = createId();
   await db.insert(users).values({
     id: hcId,
@@ -117,24 +111,20 @@ export async function seedDatabase() {
   });
   console.log("✓ Created Admin: Kalod Sta Clara");
 
-  // 4. Create 10 Facilitators
-  for (const faciName of FACIS) {
-    const [firstName] = faciName.split(" ");
-    const faciPwd = await hashPassword(`${firstName.toLowerCase()}-99`);
-    const faciEmail = `${firstName.toLowerCase()}@leap99.com`;
-    await db.insert(users).values({
-      id: createId(),
-      email: faciEmail,
-      passwordHash: faciPwd,
-      name: faciName,
-      role: "facilitator",
-      batchId,
-      approvalStatus: "approved",
-      createdAt: now,
-      updatedAt: now,
-    });
-  }
-  console.log("✓ Created 10 Facilitators");
+  // 4. Create 1 Shared Facilitator
+  const faciPwd = await hashPassword(SHARED_FACILITATOR.password);
+  await db.insert(users).values({
+    id: createId(),
+    email: SHARED_FACILITATOR.email,
+    passwordHash: faciPwd,
+    name: SHARED_FACILITATOR.name,
+    role: "facilitator",
+    batchId,
+    approvalStatus: "approved",
+    createdAt: now,
+    updatedAt: now,
+  });
+  console.log("✓ Created 1 Shared Facilitator");
 
   // 5. For each coach: create coach + council + 6 students + attendance + buddies
   let totalStudents = 0;
@@ -246,8 +236,8 @@ export async function seedDatabase() {
   console.log(`✓ Created ${totalStudents * 8} attendance records (8 per student)`);
   console.log(`✓ Created 51 buddy pairs (3 per council)`);
   console.log(
-    `\n✅ Seed complete: 1 HC (Louie) + 1 Admin (Kalod) + 10 Facis + 17 Coaches + 102 Students = 131 users total`
+    `\n✅ Seed complete: 1 HC (Louie) + 1 Admin (Kalod) + 1 Shared Faci + 17 Coaches + 102 Students = 122 users total`
   );
-  console.log(`📊 Total: ${1 + 1 + 10 + 17 + totalStudents} users seeded`);
+  console.log(`📊 Total: ${1 + 1 + 1 + 17 + totalStudents} users seeded`);
   console.log(`🏛️  Ready for LEAP 99 on port 3025`);
 }

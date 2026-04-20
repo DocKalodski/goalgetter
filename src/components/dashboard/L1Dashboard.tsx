@@ -17,6 +17,11 @@ export function L1Dashboard() {
     return <L2OverviewPage />;
   }
 
+  // Head Coach and Admins see team councils by default
+  if ((user.role === "head_coach" || user.role === "admin") && !l1SubView) {
+    return <L1CouncilRankingsPage />;
+  }
+
   switch (l1SubView) {
     case "coaches":
       return <L1CoachesPage />;
