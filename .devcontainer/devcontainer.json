@@ -1,0 +1,25 @@
+{
+  "name": "GoalGetter v3.25",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:18-bullseye",
+  "features": {
+    "ghcr.io/devcontainers/features/git:1": {}
+  },
+  "ports": [
+    {
+      "label": "Application",
+      "containerPort": 3000,
+      "protocol": "tcp",
+      "onAutoForward": "notify"
+    }
+  ],
+  "postCreateCommand": "npm install",
+  "remoteUser": "node",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode"
+      ]
+    }
+  }
+}
